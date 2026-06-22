@@ -1,0 +1,12 @@
+/* ============================================================
+   INDEX.CSS — punto de entrada, importa todos los módulos
+   ============================================================ */
+
+@import "./variables.css";
+@import "./layout.css";
+@import "./recepcion.css";
+@import "./clientes.css";
+@import "./pos.css";
+@import "./inventario.css";
+@import "./componentes.css";
+@import "./responsive.css";

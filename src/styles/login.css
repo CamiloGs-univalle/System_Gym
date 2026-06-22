@@ -1,0 +1,228 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    font-family:Inter,sans-serif;
+    overflow:hidden;
+}
+
+.login-page{
+    display:flex;
+    height:100vh;
+    width:100%;
+    background:#050816;
+}
+
+/* ==========================
+   PANEL IZQUIERDO
+========================== */
+
+.hero-panel{
+    width:60%;
+    position:relative;
+    overflow:hidden;
+
+    background:
+    radial-gradient(
+        circle at top left,
+        rgba(255,120,0,.25),
+        transparent 40%
+    ),
+    #050816;
+}
+
+.grid-lines{
+    position:absolute;
+    inset:0;
+
+    background-image:
+    linear-gradient(
+      rgba(255,255,255,.04) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255,255,255,.04) 1px,
+      transparent 1px
+    );
+
+    background-size:50px 50px;
+}
+
+/* Líneas agresivas */
+
+.diagonal{
+    position:absolute;
+
+    width:900px;
+    height:3px;
+
+    background:
+    linear-gradient(
+      90deg,
+      transparent,
+      #ff6b00,
+      transparent
+    );
+
+    opacity:.5;
+}
+
+.diagonal-1{
+    top:15%;
+    left:-20%;
+    transform:rotate(25deg);
+}
+
+.diagonal-2{
+    top:40%;
+    left:-15%;
+    transform:rotate(-18deg);
+}
+
+.diagonal-3{
+    top:75%;
+    left:-20%;
+    transform:rotate(12deg);
+}
+
+.hero-content{
+    position:relative;
+    z-index:10;
+
+    padding:100px;
+    color:white;
+}
+
+.badge{
+    padding:10px 20px;
+
+    border:1px solid rgba(255,255,255,.15);
+
+    border-radius:999px;
+
+    backdrop-filter:blur(12px);
+}
+
+.hero-content h1{
+    margin-top:40px;
+
+    font-size:72px;
+    line-height:1.1;
+}
+
+.hero-content p{
+    margin-top:30px;
+
+    max-width:500px;
+
+    color:#9ca3af;
+}
+
+/* ==========================
+   PANEL DERECHO
+========================== */
+
+.login-panel{
+    width:40%;
+
+    display:flex;
+    justify-content:center;
+    align-items:center;
+
+    background:#0b1021;
+}
+
+.login-card{
+    width:430px;
+
+    padding:40px;
+
+    border-radius:24px;
+
+    background:
+    rgba(255,255,255,.03);
+
+    border:
+    1px solid rgba(255,255,255,.08);
+
+    backdrop-filter:blur(25px);
+}
+
+.login-card h2{
+    color:white;
+    margin-bottom:30px;
+}
+
+.form-group{
+    margin-bottom:20px;
+}
+
+.form-group label{
+    color:#d1d5db;
+    display:block;
+    margin-bottom:8px;
+}
+
+.form-group input{
+    width:100%;
+    padding:15px;
+
+    border-radius:12px;
+
+    border:none;
+
+    background:#111827;
+
+    color:white;
+}
+
+.password-wrapper{
+    display:flex;
+    gap:10px;
+}
+
+.password-wrapper button{
+    width:50px;
+
+    border:none;
+
+    border-radius:12px;
+
+    background:#111827;
+
+    color:white;
+
+    cursor:pointer;
+}
+
+.login-button{
+    width:100%;
+    padding:16px;
+
+    border:none;
+
+    border-radius:14px;
+
+    cursor:pointer;
+
+    font-weight:700;
+
+    background:
+    linear-gradient(
+      135deg,
+      #ff6b00,
+      #ff8c00
+    );
+
+    color:white;
+
+    transition:.3s;
+}
+
+.login-button:hover{
+    transform:translateY(-2px);
+}

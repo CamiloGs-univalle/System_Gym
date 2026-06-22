@@ -1,0 +1,50 @@
+{
+    "name": "system_gym",
+    "version": "1.0.0",
+    "private": true,
+    "main": "electron/main.js",
+    "scripts": {
+        "dev": "concurrently \"npm run vite\" \"npm run electron\"",
+        "vite": "vite",
+        "electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
+        "build": "vite build",
+        "dist": "npm run build && electron-builder"
+    },
+    "build": {
+        "appId": "com.systemgym.app",
+        "productName": "System Gym",
+        "directories": {
+            "output": "release"
+        },
+        "win": {
+            "target": "nsis"
+        }
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.3.1",
+        "@vitejs/plugin-react": "^6.0.2",
+        "concurrently": "^10.0.3",
+        "cross-env": "^10.1.0",
+        "electron": "^42.4.1",
+        "electron-builder": "^26.15.3",
+        "tailwindcss": "^4.3.1",
+        "vite": "^8.0.16",
+        "wait-on": "^9.0.10"
+    },
+    "dependencies": {
+        "axios": "^1.18.0",
+        "bcryptjs": "^3.0.3",
+        "better-sqlite3": "^12.11.1",
+        "dayjs": "^1.11.21",
+        "jspdf": "^4.2.1",
+        "react": "^19.2.7",
+        "react-dom": "^19.2.7",
+        "react-hook-form": "^7.79.0",
+        "react-router-dom": "^7.18.0",
+        "recharts": "^3.8.1",
+        "uuid": "^14.0.0",
+        "xlsx": "^0.18.5",
+        "zod": "^4.4.3",
+        "zustand": "^5.0.14"
+    }
+}
