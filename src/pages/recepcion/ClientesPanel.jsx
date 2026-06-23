@@ -13,7 +13,7 @@ const CLIENTE_VACIO = {
     diasRestantes: "",
     precioMensual: "80000",
     precioDia: "5000",
-    membresia: "mensual", // mensual, trimestral, anual
+    membresia: "mensual",
     ultimoPago: "",
     proximoPago: ""
 };
@@ -84,7 +84,6 @@ export default function ClientesPanel() {
             return true;
         });
 
-        // Ordenar
         result.sort((a, b) => {
             const campoA = a[orden.campo] || '';
             const campoB = b[orden.campo] || '';
@@ -108,13 +107,6 @@ export default function ClientesPanel() {
         return "#10b981";
     };
 
-    const getEstadoEmoji = (estado, diasRestantes) => {
-        if (estado === "inactivo") return "🔴";
-        if (diasRestantes <= 3) return "🟡";
-        return "🟢";
-    };
-
-    // Cambiar orden
     const cambiarOrden = (campo) => {
         setOrden(prev => ({
             campo,
@@ -257,7 +249,6 @@ export default function ClientesPanel() {
         setClienteAEliminar(null);
     };
 
-    // Formatear fecha
     const formatDate = (dateStr) => {
         if (!dateStr) return '—';
         const date = new Date(dateStr);
@@ -266,7 +257,7 @@ export default function ClientesPanel() {
 
     return (
         <div className="clientes-modern-panel">
-            {/* Header con estadísticas */}
+            {/* Header */}
             <div className="clientes-modern-header">
                 <div className="header-title-section">
                     <div className="header-icon-wrapper">
@@ -282,7 +273,7 @@ export default function ClientesPanel() {
                 </Button>
             </div>
 
-            {/* Tarjetas de estadísticas */}
+            {/* Stats */}
             <div className="stats-grid">
                 <div className="stat-card stat-total">
                     <div className="stat-icon">📊</div>
@@ -317,7 +308,7 @@ export default function ClientesPanel() {
                 </div>
             </div>
 
-            {/* Filtros y búsqueda */}
+            {/* Filters */}
             <div className="clientes-modern-filters">
                 <div className="search-wrapper">
                     <span className="search-icon">🔍</span>
@@ -355,7 +346,7 @@ export default function ClientesPanel() {
                 </div>
             </div>
 
-            {/* Tabla de clientes */}
+            {/* Table */}
             <div className="clientes-modern-table-wrapper">
                 <table className="clientes-modern-table">
                     <thead>
@@ -398,10 +389,7 @@ export default function ClientesPanel() {
                                 <tr key={cliente.id} className="client-row" onClick={() => verDetalle(cliente)}>
                                     <td>
                                         <div className="cliente-info">
-                                            <div
-                                                className="cliente-avatar"
-                                                style={{ backgroundColor: avatarColor }}
-                                            >
+                                            <div className="cliente-avatar" style={{ backgroundColor: avatarColor }}>
                                                 {initials}
                                             </div>
                                             <div>
@@ -469,9 +457,7 @@ export default function ClientesPanel() {
                                                 {estado === "activo" ? "Activo" : "Inactivo"}
                                             </span>
                                             {cliente.estadoManual && (
-                                                <span className="manual-badge" title="Estado forzado manualmente">
-                                                    📌
-                                                </span>
+                                                <span className="manual-badge" title="Estado forzado manualmente">📌</span>
                                             )}
                                             {diasRestantes > 0 && diasRestantes <= 3 && estado === 'activo' && (
                                                 <span className="alerta-badge">¡Pronto vence!</span>
@@ -480,44 +466,12 @@ export default function ClientesPanel() {
                                     </td>
                                     <td>
                                         <div className="acciones-modern" onClick={(e) => e.stopPropagation()}>
-                                            <button
-                                                className="action-btn action-view"
-                                                title="Ver detalles"
-                                                onClick={() => verDetalle(cliente)}
-                                            >
-                                                👁️
-                                            </button>
-                                            <button
-                                                className="action-btn action-edit"
-                                                title="Editar cliente"
-                                                onClick={() => abrirEdicion(cliente)}
-                                            >
-                                                ✏️
-                                            </button>
-                                            <button
-                                                className="action-btn action-toggle"
-                                                title={
-                                                    cliente.estadoManual
-                                                        ? "Quitar estado forzado"
-                                                        : estado === "activo"
-                                                            ? "Desactivar"
-                                                            : "Activar"
-                                                }
-                                                onClick={() =>
-                                                    cliente.estadoManual
-                                                        ? quitarForzado(cliente.id)
-                                                        : alternarEstadoManual(cliente.id)
-                                                }
-                                            >
+                                            <button className="action-btn action-view" title="Ver detalles" onClick={() => verDetalle(cliente)}>👁️</button>
+                                            <button className="action-btn action-edit" title="Editar cliente" onClick={() => abrirEdicion(cliente)}>✏️</button>
+                                            <button className="action-btn action-toggle" title={cliente.estadoManual ? "Quitar estado forzado" : estado === "activo" ? "Desactivar" : "Activar"} onClick={() => cliente.estadoManual ? quitarForzado(cliente.id) : alternarEstadoManual(cliente.id)}>
                                                 {cliente.estadoManual ? '↩️' : '🔄'}
                                             </button>
-                                            <button
-                                                className="action-btn action-delete"
-                                                title="Desactivar cliente"
-                                                onClick={() => pedirEliminar(cliente)}
-                                            >
-                                                🗑️
-                                            </button>
+                                            <button className="action-btn action-delete" title="Desactivar cliente" onClick={() => pedirEliminar(cliente)}>🗑️</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -527,71 +481,34 @@ export default function ClientesPanel() {
                 </table>
             </div>
 
-            {/* Modal de Detalle */}
+            {/* Modal Detalle */}
             {vistaDetalle && clienteSeleccionado && (
                 <div className="modal-overlay" onClick={cerrarModal}>
                     <div className="modal-card modal-detalle" onClick={(e) => e.stopPropagation()}>
                         <button className="modal-close" onClick={cerrarModal}>✕</button>
                         <div className="detalle-header">
-                            <div
-                                className="detalle-avatar-large"
-                                style={{ backgroundColor: getAvatarColor(clienteSeleccionado.nombre) }}
-                            >
+                            <div className="detalle-avatar-large" style={{ backgroundColor: getAvatarColor(clienteSeleccionado.nombre) }}>
                                 {getInitials(clienteSeleccionado.nombre)}
                             </div>
                             <div className="detalle-header-info">
                                 <h3>{clienteSeleccionado.nombre}</h3>
                                 <p className="detalle-sub">{clienteSeleccionado.cedula}</p>
                                 <div className="detalle-estado">
-                                    <span
-                                        className="estado-badge-modern"
-                                        style={{
-                                            backgroundColor: getEstadoColor(
-                                                calcularEstado(clienteSeleccionado),
-                                                calcularDiasRestantes(clienteSeleccionado)
-                                            )
-                                        }}
-                                    >
+                                    <span className="estado-badge-modern" style={{ backgroundColor: getEstadoColor(calcularEstado(clienteSeleccionado), calcularDiasRestantes(clienteSeleccionado)) }}>
                                         {calcularEstado(clienteSeleccionado) === "activo" ? "✅ Activo" : "🔴 Inactivo"}
                                     </span>
                                 </div>
                             </div>
                         </div>
                         <div className="detalle-grid">
-                            <div className="detalle-item">
-                                <label>Teléfono</label>
-                                <span>{clienteSeleccionado.telefono || '—'}</span>
-                            </div>
-                            <div className="detalle-item">
-                                <label>Email</label>
-                                <span>{clienteSeleccionado.email || '—'}</span>
-                            </div>
-                            <div className="detalle-item">
-                                <label>Entrenador</label>
-                                <span>{clienteSeleccionado.entrenador}</span>
-                            </div>
-                            <div className="detalle-item">
-                                <label>Membresía</label>
-                                <span className={`membresia-badge ${clienteSeleccionado.membresia || 'mensual'}`}>
-                                    {clienteSeleccionado.membresia || 'Mensual'}
-                                </span>
-                            </div>
-                            <div className="detalle-item">
-                                <label>Días Restantes</label>
-                                <span className="dias-destacado">{calcularDiasRestantes(clienteSeleccionado)} días</span>
-                            </div>
-                            <div className="detalle-item">
-                                <label>Fecha Registro</label>
-                                <span>{formatDate(clienteSeleccionado.fechaRegistro)}</span>
-                            </div>
-                            <div className="detalle-item">
-                                <label>Último Pago</label>
-                                <span>{formatDate(clienteSeleccionado.ultimoPago)}</span>
-                            </div>
-                            <div className="detalle-item">
-                                <label>Próximo Pago</label>
-                                <span>{formatDate(clienteSeleccionado.proximoPago)}</span>
-                            </div>
+                            <div className="detalle-item"><label>Teléfono</label><span>{clienteSeleccionado.telefono || '—'}</span></div>
+                            <div className="detalle-item"><label>Email</label><span>{clienteSeleccionado.email || '—'}</span></div>
+                            <div className="detalle-item"><label>Entrenador</label><span>{clienteSeleccionado.entrenador}</span></div>
+                            <div className="detalle-item"><label>Membresía</label><span className={`membresia-badge ${clienteSeleccionado.membresia || 'mensual'}`}>{clienteSeleccionado.membresia || 'Mensual'}</span></div>
+                            <div className="detalle-item"><label>Días Restantes</label><span className="dias-destacado">{calcularDiasRestantes(clienteSeleccionado)} días</span></div>
+                            <div className="detalle-item"><label>Fecha Registro</label><span>{formatDate(clienteSeleccionado.fechaRegistro)}</span></div>
+                            <div className="detalle-item"><label>Último Pago</label><span>{formatDate(clienteSeleccionado.ultimoPago)}</span></div>
+                            <div className="detalle-item"><label>Próximo Pago</label><span>{formatDate(clienteSeleccionado.proximoPago)}</span></div>
                         </div>
                         {clienteSeleccionado.notas && (
                             <div className="detalle-notas">
@@ -600,168 +517,216 @@ export default function ClientesPanel() {
                             </div>
                         )}
                         <div className="detalle-acciones">
-                            <Button variant="primary" onClick={() => {
-                                cerrarModal();
-                                abrirEdicion(clienteSeleccionado);
-                            }}>
-                                ✏️ Editar Cliente
-                            </Button>
-                            <Button variant="danger" onClick={() => {
-                                cerrarModal();
-                                pedirEliminar(clienteSeleccionado);
-                            }}>
-                                🗑️ Desactivar
-                            </Button>
+                            <Button variant="primary" onClick={() => { cerrarModal(); abrirEdicion(clienteSeleccionado); }}>✏️ Editar Cliente</Button>
+                            <Button variant="danger" onClick={() => { cerrarModal(); pedirEliminar(clienteSeleccionado); }}>🗑️ Desactivar</Button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Modal Crear/Editar */}
+            {/* Modal Crear/Editar - VERSIÓN MEJORADA CON DISEÑO DE TARJETA */}
             {modalAbierto && (
                 <div className="modal-overlay" onClick={cerrarModal}>
                     <div className="modal-card modal-form" onClick={(e) => e.stopPropagation()}>
                         <button className="modal-close" onClick={cerrarModal}>✕</button>
-                        <h3 className="modal-titulo">
-                            {editandoId ? "✏️ Editar Cliente" : "➕ Nuevo Cliente"}
-                        </h3>
+                        
+                        <div className="modal-header-form">
+                            <div className="modal-header-icon">
+                                {editandoId ? '✏️' : '➕'}
+                            </div>
+                            <div>
+                                <h3 className="modal-titulo">
+                                    {editandoId ? "Editar Cliente" : "Nuevo Cliente"}
+                                </h3>
+                                <p className="modal-subtitulo">
+                                    {editandoId ? "Actualiza la información del cliente" : "Ingresa los datos del nuevo cliente"}
+                                </p>
+                            </div>
+                        </div>
 
                         <div className="modal-form-grid">
-                            <label className="modal-campo">
-                                <span>Nombre completo *</span>
+                            {/* Fila 1: Nombre completo */}
+                            <div className="modal-campo modal-campo-full">
+                                <label>
+                                    <span className="campo-label">Nombre completo</span>
+                                    <span className="campo-obligatorio">*</span>
+                                </label>
                                 <input
                                     type="text"
                                     value={form.nombre}
                                     onChange={(e) => handleFormChange("nombre", e.target.value)}
-                                    placeholder="Ej: Carlos Gómez"
+                                    placeholder="Ej: Ana Beltrán"
+                                    className="campo-input"
                                 />
-                            </label>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Cédula *</span>
+                            {/* Fila 2: Cédula y Teléfono */}
+                            <div className="modal-campo">
+                                <label>
+                                    <span className="campo-label">Cédula</span>
+                                    <span className="campo-obligatorio">*</span>
+                                </label>
                                 <input
                                     type="text"
                                     value={form.cedula}
                                     onChange={(e) => handleFormChange("cedula", e.target.value)}
-                                    placeholder="Ej: 123456789"
+                                    placeholder="Ej: 1166665555"
+                                    className="campo-input"
                                 />
-                            </label>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Teléfono</span>
+                            <div className="modal-campo">
+                                <label>
+                                    <span className="campo-label">Teléfono</span>
+                                </label>
                                 <input
                                     type="text"
                                     value={form.telefono}
                                     onChange={(e) => handleFormChange("telefono", e.target.value)}
-                                    placeholder="Ej: 3001234567"
+                                    placeholder="Ej: 3014455667"
+                                    className="campo-input"
                                 />
-                            </label>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Email</span>
+                            {/* Fila 3: Email */}
+                            <div className="modal-campo modal-campo-full">
+                                <label>
+                                    <span className="campo-label">Email</span>
+                                </label>
                                 <input
                                     type="email"
                                     value={form.email}
                                     onChange={(e) => handleFormChange("email", e.target.value)}
-                                    placeholder="Ej: carlos@email.com"
+                                    placeholder="Ej: ana@email.com"
+                                    className="campo-input"
                                 />
-                            </label>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Entrenador</span>
+                            {/* Fila 4: Entrenador y Membresía */}
+                            <div className="modal-campo">
+                                <label>
+                                    <span className="campo-label">Entrenador</span>
+                                </label>
                                 <input
                                     type="text"
                                     value={form.entrenador}
                                     onChange={(e) => handleFormChange("entrenador", e.target.value)}
                                     placeholder="Ej: Laura Martínez"
+                                    className="campo-input"
                                 />
-                            </label>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Membresía</span>
+                            <div className="modal-campo">
+                                <label>
+                                    <span className="campo-label">Membresía</span>
+                                </label>
                                 <select
                                     value={form.membresia}
                                     onChange={(e) => handleFormChange("membresia", e.target.value)}
+                                    className="campo-input"
                                 >
                                     <option value="mensual">📅 Mensual</option>
                                     <option value="trimestral">📆 Trimestral</option>
                                     <option value="anual">🗓️ Anual</option>
                                 </select>
-                            </label>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Días restantes</span>
+                            {/* Fila 5: Días restantes y Precios */}
+                            <div className="modal-campo">
+                                <label>
+                                    <span className="campo-label">Días restantes</span>
+                                </label>
                                 <input
                                     type="number"
                                     value={form.diasRestantes}
                                     onChange={(e) => handleFormChange("diasRestantes", e.target.value)}
                                     placeholder="0"
+                                    className="campo-input"
                                 />
-                            </label>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Precio mensual</span>
+                            <div className="modal-campo">
+                                <label>
+                                    <span className="campo-label">Precio mensual</span>
+                                </label>
                                 <input
                                     type="number"
                                     value={form.precioMensual}
                                     onChange={(e) => handleFormChange("precioMensual", e.target.value)}
+                                    placeholder="80000"
+                                    className="campo-input"
                                 />
-                            </label>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Precio por día</span>
+                            <div className="modal-campo">
+                                <label>
+                                    <span className="campo-label">Precio por día</span>
+                                </label>
                                 <input
                                     type="number"
                                     value={form.precioDia}
                                     onChange={(e) => handleFormChange("precioDia", e.target.value)}
+                                    placeholder="5000"
+                                    className="campo-input"
                                 />
-                            </label>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Fecha Registro</span>
-                                <input
-                                    type="date"
-                                    value={form.fechaRegistro}
-                                    onChange={(e) => handleFormChange("fechaRegistro", e.target.value)}
-                                />
-                            </label>
+                            {/* Fila 6: Fechas */}
+                            <div className="modal-campo modal-campo-full fechas-section">
+                                <label className="fechas-label">Fechas importantes</label>
+                                <div className="fechas-grid">
+                                    <div className="fecha-item">
+                                        <span>Fecha Registro</span>
+                                        <input
+                                            type="date"
+                                            value={form.fechaRegistro}
+                                            onChange={(e) => handleFormChange("fechaRegistro", e.target.value)}
+                                            className="campo-input"
+                                        />
+                                    </div>
+                                    <div className="fecha-item">
+                                        <span>Último Pago</span>
+                                        <input
+                                            type="date"
+                                            value={form.ultimoPago}
+                                            onChange={(e) => handleFormChange("ultimoPago", e.target.value)}
+                                            className="campo-input"
+                                        />
+                                    </div>
+                                    <div className="fecha-item">
+                                        <span>Próximo Pago</span>
+                                        <input
+                                            type="date"
+                                            value={form.proximoPago}
+                                            onChange={(e) => handleFormChange("proximoPago", e.target.value)}
+                                            className="campo-input"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
 
-                            <label className="modal-campo">
-                                <span>Último Pago</span>
-                                <input
-                                    type="date"
-                                    value={form.ultimoPago}
-                                    onChange={(e) => handleFormChange("ultimoPago", e.target.value)}
-                                />
-                            </label>
-
-                            <label className="modal-campo">
-                                <span>Próximo Pago</span>
-                                <input
-                                    type="date"
-                                    value={form.proximoPago}
-                                    onChange={(e) => handleFormChange("proximoPago", e.target.value)}
-                                />
-                            </label>
-
-                            <label className="modal-campo modal-campo-full">
-                                <span>Notas / Observaciones</span>
+                            {/* Fila 7: Notas */}
+                            <div className="modal-campo modal-campo-full">
+                                <label>
+                                    <span className="campo-label">Notas / Observaciones</span>
+                                </label>
                                 <textarea
                                     value={form.notas}
                                     onChange={(e) => handleFormChange("notas", e.target.value)}
                                     placeholder="Ej: Alergias, lesiones, restricciones físicas..."
                                     rows={3}
+                                    className="campo-input campo-textarea"
                                 />
-                            </label>
+                            </div>
                         </div>
 
                         <div className="modal-acciones">
-                            <Button variant="primary" onClick={guardarCliente}>
-                                {editandoId ? "💾 Guardar cambios" : "✅ Crear cliente"}
-                            </Button>
-                            <button className="modal-cancelar" onClick={cerrarModal}>
+                            <button className="btn-cancelar" onClick={cerrarModal}>
                                 Cancelar
                             </button>
+                            <Button variant="primary" onClick={guardarCliente} className="btn-guardar">
+                                {editandoId ? "💾 Guardar cambios" : "✅ Crear cliente"}
+                            </Button>
                         </div>
                     </div>
                 </div>

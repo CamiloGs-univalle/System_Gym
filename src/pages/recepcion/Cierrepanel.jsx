@@ -1,11 +1,22 @@
-// src/components/pages/recepcion
+// src/components/pages/recepcion/CierrePanel.jsx
 
 import { useState, useMemo } from "react";
 import { calcularResumen } from "../../mock/ventas";
-import { useVentasStore } from "../../store/ventasStore"; // ← Ruta correcta
+import { useVentasStore } from "../../store/ventasStore";
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const COP = (v) =>
-    "$" + Math.round(v).toLocaleString("es-CO");
+const COP = (v) => {
+    if (v === undefined || v === null || isNaN(v)) return "$0";
+    return "$" + Math.round(v).toLocaleString("es-CO");
+};
+
+// Función para limpiar valores de moneda
+const limpiarValorMoneda = (valor) => {
+    if (!valor) return "0";
+    const soloNumeros = valor.toString().replace(/[^0-9]/g, "");
+    if (!soloNumeros) return "0";
+    return String(parseInt(soloNumeros, 10));
+};
 
 const HORAS_LABELS = ["7am", "8am", "9am", "10am", "11am", "12pm", "1pm", "2pm", "3pm"];
 
@@ -34,13 +45,34 @@ function TagTipo({ tipo }) {
 export default function CierrePanel() {
     const { ventas, jornada, cerrarJornada } = useVentasStore();
 
-    // Formulario de cuadre
+    // Formulario de cuadre - ahora con valores numéricos
     const [saldoInicial, setSaldoInicial] = useState("");
     const [egresos, setEgresos] = useState("");
     const [efectivoContado, setEfectivo] = useState("");
     const [digital, setDigital] = useState("");
-    const [tabActiva, setTabActiva] = useState("transacciones"); // "transacciones" | "horas"
+    const [tabActiva, setTabActiva] = useState("transacciones");
     const [confirmando, setConfirmando] = useState(false);
+
+    // Handlers para inputs de moneda
+    const handleSaldoChange = (e) => {
+        const valor = limpiarValorMoneda(e.target.value);
+        setSaldoInicial(valor);
+    };
+
+    const handleEgresosChange = (e) => {
+        const valor = limpiarValorMoneda(e.target.value);
+        setEgresos(valor);
+    };
+
+    const handleEfectivoChange = (e) => {
+        const valor = limpiarValorMoneda(e.target.value);
+        setEfectivo(valor);
+    };
+
+    const handleDigitalChange = (e) => {
+        const valor = limpiarValorMoneda(e.target.value);
+        setDigital(valor);
+    };
 
     // Resumen calculado en tiempo real
     const resumen = useMemo(() => calcularResumen(ventas), [ventas]);
@@ -313,42 +345,42 @@ export default function CierrePanel() {
                         </div>
                     </div>
 
-                    {/* Inputs */}
+                    {/* Inputs con formateo de moneda */}
                     <div className="cierre-inputs-grid">
                         <label className="cierre-field">
                             <span>Saldo inicial ($)</span>
                             <input
-                                type="number"
-                                placeholder="0"
-                                value={saldoInicial}
-                                onChange={(e) => setSaldoInicial(e.target.value)}
+                                type="text"
+                                placeholder="$ 0"
+                                value={saldoInicial ? COP(saldoInicial) : ""}
+                                onChange={handleSaldoChange}
                             />
                         </label>
                         <label className="cierre-field">
                             <span>Egresos / gastos ($)</span>
                             <input
-                                type="number"
-                                placeholder="0"
-                                value={egresos}
-                                onChange={(e) => setEgresos(e.target.value)}
+                                type="text"
+                                placeholder="$ 0"
+                                value={egresos ? COP(egresos) : ""}
+                                onChange={handleEgresosChange}
                             />
                         </label>
                         <label className="cierre-field">
                             <span>Efectivo contado ($)</span>
                             <input
-                                type="number"
-                                placeholder="0"
-                                value={efectivoContado}
-                                onChange={(e) => setEfectivo(e.target.value)}
+                                type="text"
+                                placeholder="$ 0"
+                                value={efectivoContado ? COP(efectivoContado) : ""}
+                                onChange={handleEfectivoChange}
                             />
                         </label>
                         <label className="cierre-field">
                             <span>Datafono / transferencias ($)</span>
                             <input
-                                type="number"
-                                placeholder="0"
-                                value={digital}
-                                onChange={(e) => setDigital(e.target.value)}
+                                type="text"
+                                placeholder="$ 0"
+                                value={digital ? COP(digital) : ""}
+                                onChange={handleDigitalChange}
                             />
                         </label>
                     </div>

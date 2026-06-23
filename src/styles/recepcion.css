@@ -13,8 +13,8 @@
 
 /* ---- Topbar ---- */
 .recepcion-topbar {
-  background: white;
-  padding: 20px 32px;
+  background: rgb(255, 255, 255);
+  padding: 1px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
