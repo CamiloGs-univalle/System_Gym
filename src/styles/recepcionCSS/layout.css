@@ -1,5 +1,28 @@
 /* ============================================================
-   LAYOUT PRINCIPAL (sidebar) — usado por Admin y otros paneles
+   LAYOUT.CSS — Estructura general del panel (Admin y otros roles)
+   ============================================================
+
+   Contiene:
+     1. .dashboard-layout      → wrapper flex sidebar + contenido
+     2. .sidebar               → menú lateral oscuro, fijo, colapsable
+     3. .main-content          → contenido a la derecha del sidebar
+     4. .dashboard-header      → header superior (dentro de
+                                  DashboardLayout, para roles que no
+                                  son recepción — ver recepcion.css
+                                  para el topbar de recepción)
+     5. .dashboard-main        → padding del área de contenido
+     6. .summary-cards         → tarjetas resumen tipo KPI
+     7. .dashboard-grid        → grid 2 columnas para widgets
+     8. .card                 → card genérica reutilizable
+     9. .dashboard-tabs       → tabs de navegación interna
+     10. .alert-section       → bloque de alertas
+
+   Notas de color:
+     - El sidebar SÍ usa fondo oscuro de marca (--background /
+       --surface), ya que es una franja oscura intencional, no
+       parte del contenido claro del dashboard.
+     - El resto (cards, header, contenido) se mantiene en modo
+       claro (blanco / --gray-50), tal como estaba.
    ============================================================ */
 
 .dashboard-layout {
@@ -8,11 +31,13 @@
   background: var(--gray-50);
 }
 
-/* ---- Sidebar ---- */
+/* ---------------------------------------------------------
+   2. SIDEBAR
+   --------------------------------------------------------- */
 .sidebar {
   width: 280px;
-  background: var(--gray-900);
-  color: white;
+  background: var(--background);
+  color: var(--text);
   display: flex;
   flex-direction: column;
   transition: var(--transition);
@@ -30,7 +55,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid var(--border);
 }
 
 .brand-icon {
@@ -40,7 +65,7 @@
 .brand-name {
   font-size: 20px;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: linear-gradient(135deg, var(--primary), var(--primary-light));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -65,20 +90,20 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: var(--transition);
-  color: var(--gray-300);
+  color: var(--text-secondary);
 }
 
 .nav-item:hover {
-  background: rgba(255,255,255,0.1);
-  color: white;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
 }
 
 .nav-item.active {
   background: var(--primary);
-  color: white;
+  color: var(--text);
 }
 
 .nav-icon {
@@ -91,7 +116,7 @@
 
 .sidebar-footer {
   padding: 20px;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid var(--border);
 }
 
 .user-info {
@@ -112,11 +137,12 @@
 
 .user-name {
   font-weight: 600;
+  color: var(--text);
 }
 
 .user-role {
   font-size: 12px;
-  color: var(--gray-400);
+  color: var(--text-muted);
   text-transform: capitalize;
 }
 
@@ -127,17 +153,17 @@
 .logout-btn {
   width: 100%;
   padding: 10px;
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.16);
   color: var(--danger);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 600;
   transition: var(--transition);
 }
 
 .logout-btn:hover {
-  background: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.28);
 }
 
 .sidebar.closed .logout-btn {
@@ -150,7 +176,9 @@
   font-size: 20px;
 }
 
-/* ---- Main Content ---- */
+/* ---------------------------------------------------------
+   3. MAIN CONTENT
+   --------------------------------------------------------- */
 .main-content {
   margin-left: 280px;
   flex: 1;
@@ -161,7 +189,9 @@
   margin-left: 70px;
 }
 
-/* ---- Dashboard Header (dentro de DashboardLayout para otros roles) ---- */
+/* ---------------------------------------------------------
+   4. DASHBOARD HEADER (roles distintos a recepción)
+   --------------------------------------------------------- */
 .dashboard-header {
   background: white;
   padding: 16px 32px;
@@ -219,12 +249,16 @@
   color: var(--gray-700);
 }
 
-/* ---- Dashboard Main ---- */
+/* ---------------------------------------------------------
+   5. DASHBOARD MAIN
+   --------------------------------------------------------- */
 .dashboard-main {
   padding: 24px;
 }
 
-/* ---- Summary Cards ---- */
+/* ---------------------------------------------------------
+   6. SUMMARY CARDS (KPIs)
+   --------------------------------------------------------- */
 .summary-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -259,7 +293,9 @@
   margin: 4px 0 0;
 }
 
-/* ---- Dashboard Grid ---- */
+/* ---------------------------------------------------------
+   7. DASHBOARD GRID
+   --------------------------------------------------------- */
 .dashboard-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -275,7 +311,9 @@
   min-width: 0;
 }
 
-/* ---- Card genérica ---- */
+/* ---------------------------------------------------------
+   8. CARD GENÉRICA
+   --------------------------------------------------------- */
 .card {
   background: white;
   border-radius: var(--radius);
@@ -304,7 +342,9 @@
   padding: 20px;
 }
 
-/* ---- Tabs ---- */
+/* ---------------------------------------------------------
+   9. DASHBOARD TABS
+   --------------------------------------------------------- */
 .dashboard-tabs {
   display: flex;
   gap: 8px;
@@ -318,7 +358,7 @@
 .tab-btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
   font-weight: 500;
@@ -335,7 +375,9 @@
   color: white;
 }
 
-/* ---- Alert Section ---- */
+/* ---------------------------------------------------------
+   10. ALERT SECTION
+   --------------------------------------------------------- */
 .alert-section {
   background: white;
   padding: 20px;
@@ -357,16 +399,16 @@
 
 .alert-item {
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-weight: 500;
 }
 
 .alert-item.warning {
-  background: #fef3c7;
-  color: #92400e;
+  background: #FEF3C7;
+  color: var(--warning-dark);
 }
 
 .alert-item.danger {
-  background: #fee2e2;
-  color: #991b1b;
+  background: #FEE2E2;
+  color: var(--danger-dark);
 }

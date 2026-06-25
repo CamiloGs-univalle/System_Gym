@@ -1,7 +1,27 @@
 /* ============================================================
-   PANTALLA DE RECEPCIÓN — sin sidebar, full screen
+   RECEPCION.CSS — Pantalla de recepción (sin sidebar, full screen)
+   ============================================================
+
+   Contiene:
+     1. .recepcion-fullscreen      → wrapper de toda la pantalla
+     2. .recepcion-topbar          → barra superior con logo,
+                                      fecha/usuario y navegación
+     3. .recepcion-nav / .nav-pill → pills de navegación (Caja,
+                                      Clientes, Inventario, etc.)
+     4. .recepcion-dashboard       → área de contenido con scroll
+                                      interno propio (el topbar
+                                      queda siempre visible)
+     5. Responsive
+
+   Nota: esta es la versión "definitiva" del topbar de recepción
+   (con scroll interno en .recepcion-dashboard-content). El
+   layout.css de Admin usa su propio .dashboard-header — son
+   pantallas distintas, no se mezclan.
    ============================================================ */
 
+/* ---------------------------------------------------------
+   1. WRAPPER GENERAL
+   --------------------------------------------------------- */
 .recepcion-fullscreen {
   min-height: 100vh;
   height: 100vh;
@@ -11,10 +31,12 @@
   overflow: hidden;
 }
 
-/* ---- Topbar ---- */
+/* ---------------------------------------------------------
+   2. TOPBAR
+   --------------------------------------------------------- */
 .recepcion-topbar {
-  background: rgb(255, 255, 255);
-  padding: 1px 20px;
+  background: white;
+  padding: 16px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -60,7 +82,21 @@
   color: var(--gray-800);
 }
 
-/* ---- Nav pills ---- */
+/* Variante usada cuando el bloque usuario va junto al logout
+   (composición alternativa del topbar) */
+.recepcion-usuario {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recepcion-usuario-avatar {
+  font-size: 20px;
+}
+
+/* ---------------------------------------------------------
+   3. NAV PILLS
+   --------------------------------------------------------- */
 .recepcion-nav {
   display: flex;
   align-items: center;
@@ -105,7 +141,9 @@
   background: rgba(239, 68, 68, 0.22);
 }
 
-/* ---- Main area con scroll ---- */
+/* ---------------------------------------------------------
+   4. ÁREA DE CONTENIDO (con scroll interno propio)
+   --------------------------------------------------------- */
 .recepcion-dashboard {
   flex: 1;
   padding: 0 24px 24px;
@@ -115,7 +153,6 @@
   min-height: 0;
 }
 
-/* Contenedor interno con scroll */
 .recepcion-dashboard-content {
   flex: 1;
   overflow-y: auto;
@@ -124,7 +161,6 @@
   flex-direction: column;
 }
 
-/* Scroll personalizado */
 .recepcion-dashboard-content::-webkit-scrollbar {
   width: 6px;
 }
@@ -143,7 +179,9 @@
   background: var(--gray-400);
 }
 
-/* ---- Responsive ---- */
+/* ---------------------------------------------------------
+   5. RESPONSIVE
+   --------------------------------------------------------- */
 @media (max-width: 768px) {
   .recepcion-topbar {
     padding: 12px 16px;
