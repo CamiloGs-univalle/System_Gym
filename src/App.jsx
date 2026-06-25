@@ -1,3 +1,4 @@
+import AdminDashboard from "./pages/admin/AdminDashboard";
 import Login from "./pages/Login";
 import RecepcionDashboard from "./pages/recepcion/RecepcionDashboard";
 import useAuthStore from "./store/authStore";
@@ -13,7 +14,7 @@ function App() {
     case "superadmin":
     case "admin":
       // Temporalmente mostramos Recepción mientras construimos los otros módulos
-      return <RecepcionDashboard />;
+      return <AdminDashboard />;
     case "recepcion":
       return <RecepcionDashboard />;
     default:

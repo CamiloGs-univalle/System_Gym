@@ -1,0 +1,118 @@
+/* ============================================
+   TURNOS
+   ============================================ */
+
+.turnos-container { display: flex; flex-direction: column; gap: 12px; }
+
+/* Grid turnos hoy */
+.turnos-hoy { display: flex; flex-direction: column; gap: 12px; }
+
+.turnos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    align-items: start;
+    align-content: start;
+}
+
+/* Tarjeta de turno */
+.turno-card {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.turno-abierto { border-left: 4px solid #f59e0b; }
+.turno-cerrado { border-left: 4px solid #10b981; }
+
+.turno-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.turno-emp {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.turno-nombre { display: block; font-size: 13px; font-weight: 600; color: var(--gray-800); }
+.turno-cargo { display: block; font-size: 11px; color: var(--gray-400); }
+
+/* Info grid del turno */
+.turno-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    background: var(--gray-50);
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.turno-info-item { display: flex; flex-direction: column; }
+.turno-info-label { font-size: 10px; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.3px; }
+.turno-info-valor { font-size: 13px; font-weight: 600; color: var(--gray-700); }
+
+.turno-obs {
+    font-size: 11px;
+    color: var(--gray-500);
+    background: var(--gray-50);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin: 0;
+}
+
+/* Vacío */
+.turnos-vacio {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 40px 20px;
+    background: white;
+    border: 2px dashed var(--gray-200);
+    border-radius: 10px;
+    text-align: center;
+}
+
+.turnos-vacio span { font-size: 40px; }
+.turnos-vacio p { font-size: 14px; color: var(--gray-500); margin: 0; }
+
+/* Historial */
+.historial-card { height: auto; }
+
+/* Cierre modal */
+.cierre-resumen {
+    background: var(--gray-50);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+}
+
+.cierre-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cierre-label { font-size: 13px; color: var(--gray-600); }
+.cierre-valor { font-size: 18px; font-weight: 700; }
+
+.cierre-diferencia {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: var(--gray-50);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 8px;
+}
+
+.campo-grande { font-size: 18px !important; font-weight: 700; text-align: center; }

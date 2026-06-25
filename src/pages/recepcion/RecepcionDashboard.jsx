@@ -6,7 +6,7 @@ import ClientesPanel from "./ClientesPanel";
 import POSPanel from "./POSPanel";
 import ProductosPanel from "./ProductosPanel";
 import CierrePanel from "./Cierrepanel";
-import "../../styles/index.css";
+import "../../styles/recepcionCSS/index.css";
 
 const NAV = [
   { id: "general", label: "General" },

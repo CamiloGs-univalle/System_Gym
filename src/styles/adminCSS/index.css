@@ -1,0 +1,10 @@
+/* ============================================
+   ADMIN - CSS INDEX
+   ============================================ */
+
+@import "./admin.css";
+@import "./usuarios.css";
+@import "./finanzas.css";
+@import "./turnos.css";
+@import "./configuracion.css";
+@import "./reportes.css";

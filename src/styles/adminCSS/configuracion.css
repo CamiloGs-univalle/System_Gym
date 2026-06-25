@@ -1,0 +1,497 @@
+/* ============================================
+   CONFIGURACION PANEL - Estilos
+   ============================================ */
+
+.configuracion-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 16px;
+}
+
+/* Header */
+.configuracion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--exec-border);
+}
+
+.configuracion-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--exec-primary);
+    margin: 0;
+}
+
+.configuracion-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Body */
+.configuracion-body {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 20px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Sidebar */
+.configuracion-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: white;
+    border-radius: 12px;
+    padding: 8px;
+    border: 1px solid var(--exec-border);
+    height: fit-content;
+}
+
+.config-sidebar-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--exec-gray);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+
+.config-sidebar-btn:hover {
+    background: #f1f5f9;
+    color: var(--exec-primary);
+}
+
+.config-sidebar-btn.active {
+    background: var(--exec-primary);
+    color: white;
+}
+
+.config-sidebar-icon { font-size: 16px; }
+.config-sidebar-label { font-size: 13px; }
+
+/* Main content */
+.configuracion-main {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.config-card {
+    height: 100%;
+    overflow-y: auto;
+}
+
+/* Secciones */
+.config-seccion {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.config-seccion h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--exec-primary);
+    margin: 0;
+}
+
+/* Formulario */
+.config-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.config-campo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.config-campo-full {
+    grid-column: 1 / -1;
+}
+
+.config-campo-small {
+    max-width: 200px;
+}
+
+.config-campo label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #475569;
+}
+
+.config-input {
+    padding: 8px 12px;
+    border: 2px solid var(--exec-border);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--exec-primary);
+    background: white;
+    transition: all 0.2s ease;
+}
+
+.config-input:focus {
+    border-color: #3b82f6;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.config-input:disabled {
+    background: #f8fafc;
+    color: #475569;
+    cursor: not-allowed;
+}
+
+.config-input-precio {
+    max-width: 150px;
+}
+
+.precio-input-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.precio-simbolo {
+    font-weight: 600;
+    color: var(--exec-gray);
+}
+
+/* Precios grid */
+.config-precios-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.config-precio-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid var(--exec-border);
+}
+
+.config-precio-item label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #475569;
+}
+
+/* Dias grid */
+.config-dias-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+}
+
+.config-dia-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #1e293b;
+    cursor: pointer;
+}
+
+.config-dia-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #3b82f6;
+}
+
+/* Turnos */
+.config-turnos-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+}
+
+.config-turno-item {
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid var(--exec-border);
+}
+
+.config-turno-item h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--exec-primary);
+    margin: 0 0 12px;
+}
+
+.config-turno-item .config-form-grid {
+    gap: 8px;
+}
+
+/* Notificaciones */
+.config-notificaciones {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.config-notificacion-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid var(--exec-border);
+}
+
+.config-notificacion-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.config-notificacion-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.config-notificacion-desc {
+    font-size: 12px;
+    color: var(--exec-gray);
+}
+
+/* Toggle Switch */
+.config-toggle {
+    display: flex;
+    align-items: center;
+}
+
+.config-toggle-label {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 26px;
+    cursor: pointer;
+}
+
+.config-toggle-input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.config-toggle-slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #cbd5e1;
+    border-radius: 26px;
+    transition: 0.3s ease;
+}
+
+.config-toggle-slider::before {
+    content: "";
+    position: absolute;
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: 0.3s ease;
+}
+
+.config-toggle-input:checked + .config-toggle-slider {
+    background: #3b82f6;
+}
+
+.config-toggle-input:checked + .config-toggle-slider::before {
+    transform: translateX(22px);
+}
+
+.config-toggle-input:disabled + .config-toggle-slider {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Info Box */
+.config-info-box {
+    background: #f1f5f9;
+    border-radius: 8px;
+    padding: 16px 20px;
+    border: 1px solid var(--exec-border);
+}
+
+.config-info-box h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--exec-primary);
+    margin: 0 0 8px;
+}
+
+.config-info-box p {
+    font-size: 13px;
+    color: #475569;
+    margin: 4px 0;
+}
+
+.config-help {
+    font-size: 12px;
+    color: var(--exec-gray);
+    font-style: italic;
+}
+
+.config-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+}
+
+.config-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px;
+    background: white;
+    border-radius: 6px;
+}
+
+.info-label {
+    font-size: 11px;
+    color: var(--exec-gray);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.info-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--exec-primary);
+}
+
+/* Footer */
+.configuracion-footer {
+    padding-top: 12px;
+    border-top: 1px solid var(--exec-border);
+}
+
+.config-footer-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.config-footer-label {
+    font-size: 12px;
+    color: var(--exec-gray);
+}
+
+.config-footer-status {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.config-footer-status.status-editing {
+    color: #f59e0b;
+}
+
+.config-footer-status.status-saved {
+    color: #10b981;
+}
+
+.config-footer-date {
+    font-size: 12px;
+    color: var(--exec-gray);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .configuracion-body {
+        grid-template-columns: 1fr;
+    }
+    
+    .configuracion-sidebar {
+        flex-direction: row;
+        overflow-x: auto;
+        padding: 4px;
+    }
+    
+    .config-sidebar-btn {
+        white-space: nowrap;
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    
+    .config-turnos-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .configuracion-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .configuracion-actions {
+        flex-wrap: wrap;
+    }
+    
+    .config-form-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .config-precios-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .config-turnos-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .config-dias-grid {
+        grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    }
+    
+    .config-notificacion-item {
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 480px) {
+    .config-precios-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .config-info-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .configuracion-sidebar {
+        flex-wrap: nowrap;
+    }
+    
+    .config-sidebar-label {
+        display: none;
+    }
+}
