@@ -62,29 +62,38 @@ export default function EmpleadosPanel() {
         )},
     ];
 
+    /**
+     * ACCIONES CORREGIDAS
+     * Todas las propiedades que dependen de 'row' deben ser funciones
+     */
     const actions = [
+        // Acción 1: Ver detalles
         { 
             icon: "👁️", 
             tooltip: "Ver detalles",
             className: "action-view",
             onClick: (row) => setDetalleEmpleado(row) 
         },
+        // Acción 2: Editar
         { 
             icon: "✏️", 
             tooltip: "Editar",
             className: "action-edit",
             onClick: (row) => abrirModal(row) 
         },
+        // Acción 3: Desprendible
         { 
             icon: "📄", 
             tooltip: "Desprendible de pago",
             className: "action-payroll",
             onClick: (row) => generarDesprendible(row) 
         },
+        // Acción 4: Activar/Desactivar - CORREGIDO
+        // Ahora icon, tooltip y className son funciones que reciben 'row'
         { 
-            icon: row.activo ? "🔴" : "🟢", 
-            tooltip: row.activo ? "Desactivar" : "Activar",
-            className: row.activo ? "action-deactivate" : "action-activate",
+            icon: (row) => row.activo ? "🔴" : "🟢",
+            tooltip: (row) => row.activo ? "Desactivar" : "Activar",
+            className: (row) => row.activo ? "action-deactivate" : "action-activate",
             onClick: (row) => toggleEstado(row) 
         },
     ];

@@ -10,7 +10,7 @@ export default function DataTable({
     onRowClick,
     searchable = true,
     searchPlaceholder = "Buscar...",
-    actions,
+    actions = [],
     emptyMessage = "No hay datos disponibles"
 }) {
     const [search, setSearch] = useState("");
@@ -46,6 +46,15 @@ export default function DataTable({
         }
     };
 
+    /**
+     * Función auxiliar para obtener el valor de una propiedad que puede ser
+     * un valor fijo o una función que recibe la fila
+     */
+    const getActionValue = (action, property, row) => {
+        const value = action[property];
+        return typeof value === 'function' ? value(row) : value;
+    };
+
     return (
         <div className="data-table-container">
             {searchable && (
@@ -62,7 +71,12 @@ export default function DataTable({
                             <button className="search-clear" onClick={() => setSearch("")}>✕</button>
                         )}
                     </div>
-                    {actions && <div className="data-table-actions">{actions}</div>}
+                    {/* CORREGIDO: Verificar que actions sea un array y tenga elementos */}
+                    {actions && actions.length > 0 && (
+                        <div className="data-table-actions">
+                            {/* Aquí puedes agregar acciones globales si lo deseas */}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -84,13 +98,15 @@ export default function DataTable({
                                     )}
                                 </th>
                             ))}
-                            {actions && <th className="actions-header">Acciones</th>}
+                            {actions && actions.length > 0 && (
+                                <th className="actions-header">Acciones</th>
+                            )}
                         </tr>
                     </thead>
                     <tbody>
                         {sortedData.length === 0 ? (
                             <tr>
-                                <td colSpan={columns.length + (actions ? 1 : 0)} className="empty-row">
+                                <td colSpan={columns.length + (actions && actions.length > 0 ? 1 : 0)} className="empty-row">
                                     {emptyMessage}
                                 </td>
                             </tr>
@@ -106,21 +122,28 @@ export default function DataTable({
                                             {col.render ? col.render(row) : row[col.key]}
                                         </td>
                                     ))}
-                                    {actions && (
+                                    {actions && actions.length > 0 && (
                                         <td className="actions-cell">
-                                            {actions.map((action, actionIndex) => (
-                                                <button
-                                                    key={actionIndex}
-                                                    className={`action-btn ${action.className || ""}`}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        action.onClick(row);
-                                                    }}
-                                                    title={action.tooltip}
-                                                >
-                                                    {action.icon}
-                                                </button>
-                                            ))}
+                                            {actions.map((action, actionIndex) => {
+                                                // Obtener los valores evaluando las funciones
+                                                const icon = getActionValue(action, 'icon', row);
+                                                const tooltip = getActionValue(action, 'tooltip', row);
+                                                const className = getActionValue(action, 'className', row);
+                                                
+                                                return (
+                                                    <button
+                                                        key={actionIndex}
+                                                        className={`action-btn ${className || ""}`}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            action.onClick(row);
+                                                        }}
+                                                        title={tooltip || ""}
+                                                    >
+                                                        {icon}
+                                                    </button>
+                                                );
+                                            })}
                                         </td>
                                     )}
                                 </tr>
