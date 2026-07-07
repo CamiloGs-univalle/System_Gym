@@ -1,53 +1,88 @@
+// src/pages/Login.jsx (o LoginPanel.jsx)
 // ============================================================================
 // LoginPanel.jsx
 // ============================================================================
-// Componente de inicio de sesión.
-//
-// Responsabilidades:
-// - Capturar usuario y contraseña.
-// - Validar campos obligatorios.
-// - Invocar el login del store (Zustand).
-// - Mostrar errores de autenticación.
-// - Mostrar estado de carga.
-//
-// Flujo:
-//
-// Usuario escribe credenciales
-//          ↓
-// handleLogin()
-//          ↓
-// authStore.login()
-//          ↓
-// authService.login()
-//          ↓
-// POST /api/auth/login
-//          ↓
-// Backend devuelve JWT + usuario
-//          ↓
-// Zustand guarda sesión
-// ============================================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 
 export default function LoginPanel() {
 
   // ==========================================================================
-  // Obtiene la función login del store global
+  // Obtiene el estado y funciones del store
   // ==========================================================================
   const login = useAuthStore((state) => state.login);
+  const usuario = useAuthStore((state) => state.usuario);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const loading = useAuthStore((state) => state.loading);
+  const errorStore = useAuthStore((state) => state.error);
+  const hydrate = useAuthStore((state) => state.hydrate); // ← CORREGIDO: usar hydrate en lugar de restoreSession
+  const clearError = useAuthStore((state) => state.clearError);
+
+  // ==========================================================================
+  // Navegación
+  // ==========================================================================
+  const navigate = useNavigate();
 
   // ==========================================================================
   // Estados locales del formulario
   // ==========================================================================
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-
-  // Mensaje de error para mostrar en pantalla
   const [error, setError] = useState("");
 
-  // Control de carga
-  const [isLoading, setIsLoading] = useState(false);
+  // ==========================================================================
+  // Efecto: Restaurar sesión al cargar
+  // ==========================================================================
+  useEffect(() => {
+    console.log("=================================");
+    console.log("LOGIN PANEL - Inicializando");
+    console.log("=================================");
+    
+    // CORREGIDO: usar hydrate en lugar de restoreSession
+    const restored = hydrate();
+    console.log("Sesión restaurada:", restored);
+    
+    // Si ya hay usuario, redirigir
+    if (restored && usuario) {
+      console.log("Usuario existente, redirigiendo...");
+      redirigirPorRol(usuario);
+    }
+  }, []); // ← Asegurar que solo se ejecute una vez
+
+  // ==========================================================================
+  // Efecto: Redirigir cuando el usuario cambia (login exitoso)
+  // ==========================================================================
+  useEffect(() => {
+    if (usuario && isAuthenticated) {
+      console.log("Login detectado, redirigiendo...");
+      redirigirPorRol(usuario);
+    }
+  }, [usuario, isAuthenticated]);
+
+  // ==========================================================================
+  // Función para redirigir según el rol
+  // ==========================================================================
+  const redirigirPorRol = (user) => {
+    const role = user?.role?.toUpperCase() || "";
+    console.log("=================================");
+    console.log("REDIRIGIENDO POR ROL");
+    console.log("=================================");
+    console.log("Usuario:", user.username);
+    console.log("Rol:", role);
+
+    if (role === "ADMIN" || role === "SUPER_ADMIN" || role === "ADMINISTRADOR") {
+      console.log("✅ Redirigiendo a /admin/dashboard");
+      navigate("/admin/dashboard", { replace: true });
+    } else if (role === "RECEPTIONIST" || role === "RECEPCION" || role === "RECEPCIONISTA" || role === "RECEPTION") {
+      console.log("✅ Redirigiendo a /recepcion/dashboard");
+      navigate("/recepcion/dashboard", { replace: true });
+    } else {
+      console.warn("⚠️ Rol no reconocido:", role);
+      setError(`Rol no reconocido: ${role}. Contacta al administrador.`);
+    }
+  };
 
   // ==========================================================================
   // Procesar login
@@ -62,49 +97,41 @@ export default function LoginPanel() {
       return;
     }
 
+    // Limpiar errores
     setError("");
-    setIsLoading(true);
+    clearError();
+
+    console.log("=================================");
+    console.log("LOGIN PANEL - Intentando iniciar sesión");
+    console.log("=================================");
+    console.log({
+      username,
+      password,
+    });
 
     try {
-
       // ----------------------------------------------------------------------
-      // DEBUG
+      // Llamar al store con las credenciales
       // ----------------------------------------------------------------------
-      console.log("Intentando iniciar sesión");
-
-      console.log({
+      const user = await login({
         username,
         password,
       });
 
-      // ----------------------------------------------------------------------
-      // El store espera un objeto:
-      //
-      // {
-      //   username,
-      //   password
-      // }
-      // ----------------------------------------------------------------------
-      await login({
-        username,
-        password,
-      });
-
-      console.log("Login exitoso");
+      console.log("Login exitoso:", user);
+      // La redirección se maneja en el useEffect
 
     } catch (err) {
 
-      console.error("Error login:", err);
+      console.error("Error en login:", err);
 
-      setError(
-        err?.details?.message ||
+      // Mostrar error del store o el mensaje del error
+      const mensajeError = 
         err?.message ||
-        "Usuario o contraseña incorrectos"
-      );
-
-    } finally {
-
-      setIsLoading(false);
+        err?.details?.message ||
+        "Usuario o contraseña incorrectos";
+      
+      setError(mensajeError);
 
     }
   };
@@ -113,11 +140,10 @@ export default function LoginPanel() {
   // Permitir Enter para iniciar sesión
   // ==========================================================================
   const handleKeyDown = (e) => {
-
     if (e.key === "Enter") {
+      e.preventDefault();
       handleLogin();
     }
-
   };
 
   // ==========================================================================
@@ -146,7 +172,7 @@ export default function LoginPanel() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isLoading}
+            disabled={loading}
             autoFocus
           />
 
@@ -168,7 +194,7 @@ export default function LoginPanel() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isLoading}
+            disabled={loading}
           />
 
         </div>
@@ -176,12 +202,12 @@ export default function LoginPanel() {
         {/* ================================================================ */}
         {/* Error */}
         {/* ================================================================ */}
-        {error && (
+        {(error || errorStore) && (
           <p
             className="error-message"
             role="alert"
           >
-            {error}
+            ❌ {error || errorStore}
           </p>
         )}
 
@@ -191,11 +217,11 @@ export default function LoginPanel() {
         <button
           className="login-button"
           onClick={handleLogin}
-          disabled={isLoading}
+          disabled={loading}
         >
-          {isLoading
-            ? "Cargando..."
-            : "INGRESAR"}
+          {loading
+            ? "⏳ Cargando..."
+            : "🚪 INGRESAR"}
         </button>
 
       </div>

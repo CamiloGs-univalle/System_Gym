@@ -1,22 +1,18 @@
 // src/services/turnoService.js
-// Bloque 4 - Turnos y arqueo ciego. Endpoints: /api/shifts
 
 import api from './api';
 
 export const turnoService = {
-  /**
-   * @param {object} datos - { tipo, baseCaja, receptionistId }
-   */
   async abrir({ tipo, baseCaja, receptionistId }) {
-    const payload = { type: tipo, cashBase: baseCaja, receptionistId };
+    const payload = { 
+      type: tipo, 
+      cashBase: baseCaja, 
+      receptionistId 
+    };
     const { data } = await api.post('/shifts', payload);
     return data;
   },
 
-  /**
-   * @param {number|string} id - id del turno abierto
-   * @param {number} montoIngresado - monto físico contado (arqueo ciego)
-   */
   async cerrar(id, montoIngresado) {
     const { data } = await api.post(`/shifts/${id}/close`, {
       physicalAmount: montoIngresado,
@@ -30,8 +26,39 @@ export const turnoService = {
   },
 
   async turnosHoy() {
-    const { data } = await api.get('/shifts/today');
-    return data;
+    try {
+      const response = await api.get('/shifts/today');
+      console.log("📥 Respuesta de turnosHoy:", response);
+      
+      // Extraer los datos de la respuesta
+      let data = response.data || response;
+      
+      // Si data tiene una propiedad 'data', usarla
+      if (data.data && Array.isArray(data.data)) {
+        data = data.data;
+      }
+      
+      // Si data tiene una propiedad 'shifts', usarla
+      if (data.shifts && Array.isArray(data.shifts)) {
+        data = data.shifts;
+      }
+      
+      // Si data no es array, buscar un array en cualquier propiedad
+      if (!Array.isArray(data)) {
+        const possibleArrays = Object.values(data).filter(v => Array.isArray(v));
+        if (possibleArrays.length > 0) {
+          data = possibleArrays[0];
+        } else {
+          data = [];
+        }
+      }
+      
+      console.log(`✅ Turnos obtenidos: ${data.length}`);
+      return data;
+    } catch (error) {
+      console.error("❌ Error en turnosHoy:", error);
+      throw error;
+    }
   },
 };
 

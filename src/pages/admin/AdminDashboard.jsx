@@ -2,6 +2,7 @@
 // ADMIN DASHBOARD - Sistema completo
 // ============================================
 import { useState, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom"; // ← IMPORTAR useNavigate
 import KpiCard from "../../components/admin/KpiCard";
 import ActivityFeed from "../../components/admin/ActivityFeed";
 import QuickActions from "../../components/admin/QuickActions";
@@ -16,6 +17,7 @@ import { clientes } from "../../mock/clientes";
 import { empleados, turnos } from "../../mock/empleados";
 import { ingresosMensualidades, ingresosProductos, egresos } from "../../mock/finanzas";
 import { COP, formatDate, calculateDaysBetween } from "../../utils/formatters";
+import useAuthStore from "../../store/authStore";
 import "../../styles/adminCSS/index.css";
 
 // Utilidades
@@ -41,6 +43,19 @@ const tabs = [
 export default function AdminDashboard() {
     const [tabActiva, setTabActiva] = useState("dashboard");
     const [lastActivity, setLastActivity] = useState([]);
+    const navigate = useNavigate(); // ← Hook de navegación
+
+    // Verificar autenticación al cargar
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+    const usuario = useAuthStore((state) => state.usuario);
+
+    // Efecto para redirigir si no está autenticado
+    useEffect(() => {
+        if (!isAuthenticated || !usuario) {
+            console.log("🔒 AdminDashboard - No autenticado, redirigiendo al login");
+            navigate("/login", { replace: true });
+        }
+    }, [isAuthenticated, usuario, navigate]);
 
     // Generar actividad en tiempo real (simulado)
     useEffect(() => {
@@ -55,16 +70,16 @@ export default function AdminDashboard() {
     }, []);
 
     // Stats para KPIs
-    const clientesActivos = useMemo(() => 
+    const clientesActivos = useMemo(() =>
         clientes.filter(c => c.estado === "activo" && c.mensualidad?.activa).length,
-    []);
+        []);
 
-    const clientesVencidos = useMemo(() => 
+    const clientesVencidos = useMemo(() =>
         clientes.filter(c => {
             const dias = calcularDiasRestantes(c.mensualidad?.fechaVencimiento);
             return dias < 0 && c.estado === "activo";
         }).length,
-    []);
+        []);
 
     const clientesPorVencer = useMemo(() => {
         return clientes.filter(c => {
@@ -96,77 +111,77 @@ export default function AdminDashboard() {
 
     // KPIs del dashboard
     const kpis = [
-        { 
-            icon: "👥", 
-            value: clientesActivos, 
-            label: "Clientes Activos", 
+        {
+            icon: "👥",
+            value: clientesActivos,
+            label: "Clientes Activos",
             subtitle: `${clientes.length} total`,
             color: "#3b82f6",
             bg: "#eff6ff",
-            onClick: () => setTabActiva("usuarios") 
+            onClick: () => setTabActiva("usuarios")
         },
-        { 
-            icon: "⚠️", 
-            value: clientesPorVencer, 
-            label: "Por Vencer", 
+        {
+            icon: "⚠️",
+            value: clientesPorVencer,
+            label: "Por Vencer",
             subtitle: "≤ 3 días",
             color: "#f59e0b",
             bg: "#fffbeb",
-            onClick: () => setTabActiva("usuarios") 
+            onClick: () => setTabActiva("usuarios")
         },
-        { 
-            icon: "❌", 
-            value: clientesVencidos, 
-            label: "Vencidos", 
+        {
+            icon: "❌",
+            value: clientesVencidos,
+            label: "Vencidos",
             subtitle: "Sin membresía",
             color: "#ef4444",
             bg: "#fef2f2",
-            onClick: () => setTabActiva("usuarios") 
+            onClick: () => setTabActiva("usuarios")
         },
-        { 
-            icon: "💰", 
-            value: COP(ingresoMes), 
-            label: "Ingresos del Mes", 
+        {
+            icon: "💰",
+            value: COP(ingresoMes),
+            label: "Ingresos del Mes",
             subtitle: `Egresos ${COP(egresoMes)}`,
             color: "#10b981",
             bg: "#ecfdf5",
-            onClick: () => setTabActiva("finanzas") 
+            onClick: () => setTabActiva("finanzas")
         },
-        { 
-            icon: "📈", 
-            value: COP(ingresoMes - egresoMes), 
-            label: "Utilidad Neta", 
+        {
+            icon: "📈",
+            value: COP(ingresoMes - egresoMes),
+            label: "Utilidad Neta",
             subtitle: `${((ingresoMes - egresoMes) / (ingresoMes || 1) * 100).toFixed(1)}% margen`,
             color: "#8b5cf6",
             bg: "#f5f3ff",
-            onClick: () => setTabActiva("finanzas") 
+            onClick: () => setTabActiva("finanzas")
         },
-        { 
-            icon: "👷", 
-            value: totalEmpleados, 
-            label: "Empleados Activos", 
+        {
+            icon: "👷",
+            value: totalEmpleados,
+            label: "Empleados Activos",
             subtitle: `${empleados.filter(e => e.activo && e.cargo === "Entrenador").length} entrenadores`,
             color: "#06b6d4",
             bg: "#ecfeff",
-            onClick: () => setTabActiva("empleados") 
+            onClick: () => setTabActiva("empleados")
         },
-        { 
-            icon: "🕐", 
-            value: turnoAbierto ? "✅" : "⏸️", 
-            label: "Turno Hoy", 
+        {
+            icon: "🕐",
+            value: turnoAbierto ? "✅" : "⏸️",
+            label: "Turno Hoy",
             subtitle: turnoAbierto ? "Abierto" : "Sin turno activo",
             color: turnoAbierto ? "#10b981" : "#6b7280",
             bg: turnoAbierto ? "#ecfdf5" : "#f3f4f6",
-            onClick: () => setTabActiva("turnos") 
+            onClick: () => setTabActiva("turnos")
         },
-        { 
-            icon: "📦", 
-            value: "32", 
-            label: "Productos", 
+        {
+            icon: "📦",
+            value: "32",
+            label: "Productos",
             subtitle: "En inventario",
             color: "#f43f5e",
             bg: "#fef2f2",
-            onClick: () => setTabActiva("productos") 
+            onClick: () => setTabActiva("productos")
         },
     ];
 
@@ -187,11 +202,42 @@ export default function AdminDashboard() {
                 const dias = calcularDiasRestantes(c.mensualidad?.fechaVencimiento);
                 return dias >= 0 && dias <= 5 && c.estado === "activo" && c.mensualidad?.activa;
             })
-            .sort((a, b) => 
-                calcularDiasRestantes(a.mensualidad?.fechaVencimiento) - 
+            .sort((a, b) =>
+                calcularDiasRestantes(a.mensualidad?.fechaVencimiento) -
                 calcularDiasRestantes(b.mensualidad?.fechaVencimiento)
             );
     }, []);
+
+    const logout = useAuthStore((state) => state.logout);
+
+    // ============================================
+    // LOGOUT CORREGIDO (igual que en RecepcionDashboard)
+    // ============================================
+    const handleLogout = () => {
+        // Confirmar antes de cerrar sesión
+        if (!window.confirm("¿Deseas cerrar sesión?")) return;
+
+        console.log("=================================");
+        console.log("ADMIN DASHBOARD - Cerrando sesión");
+        console.log("=================================");
+
+        // 1. Llamar al logout del store
+        logout();
+
+        // 2. Redirigir al login
+        navigate("/login", { replace: true });
+
+        // 3. Recargar la página para resetear completamente
+        // (esto asegura que todo el estado se limpie)
+        window.location.reload();
+
+        console.log("✅ Sesión cerrada y redirigido al login");
+    };
+
+    // Si no está autenticado, no renderizar nada (el efecto redirigirá)
+    if (!isAuthenticated || !usuario) {
+        return null;
+    }
 
     // Renderizar contenido según tab
     const renderContent = () => {
@@ -251,7 +297,7 @@ export default function AdminDashboard() {
                                         })
                                     )}
                                     {clientesPorVencerLista.length > 5 && (
-                                        <button 
+                                        <button
                                             className="expiring-ver-mas"
                                             onClick={() => setTabActiva("usuarios")}
                                         >
@@ -297,6 +343,14 @@ export default function AdminDashboard() {
                         <span className="exec-badge-dot"></span>
                         Sistema en vivo
                     </span>
+                    <button
+                        onClick={handleLogout}
+                        className="exec-logout-btn"
+                        title="Cerrar sesión"
+                    >
+                        <span className="exec-logout-icon">🚪</span>
+                        <span className="exec-logout-text">Salir</span>
+                    </button>
                 </div>
             </header>
 

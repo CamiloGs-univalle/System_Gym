@@ -1,5 +1,6 @@
-// src/pages/recepcion/RecepcionDashboard.jsx
-import { useState } from "react";
+// src/pages/recepcion/RecepcionDashboard.jsx (versión sin reload)
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import { VentasProvider } from "../../store/ventasStore";
 import ClientesPanel from "./ClientesPanel";
@@ -29,7 +30,39 @@ function fechaHoy() {
 export default function RecepcionDashboard() {
   const [activeView, setActiveView] = useState("general");
   const usuario = useAuthStore((state) => state.usuario);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const logout = useAuthStore((state) => state.logout);
+  const navigate = useNavigate();
+
+  // Efecto para redirigir si no está autenticado
+  useEffect(() => {
+    if (!isAuthenticated || !usuario) {
+      console.log("🔒 No autenticado, redirigiendo al login");
+      navigate("/login", { replace: true });
+    }
+  }, [isAuthenticated, usuario, navigate]);
+
+  const handleLogout = () => {
+    if (!window.confirm("¿Deseas cerrar sesión?")) return;
+
+    console.log("=================================");
+    console.log("RECEPCION DASHBOARD - Cerrando sesión");
+    console.log("=================================");
+
+    // 1. Llamar al logout del store
+    logout();
+
+    // 2. Redirigir al login
+    navigate("/login", { replace: true });
+
+    // 3. NO recargar la página (el efecto se encargará)
+    console.log("✅ Sesión cerrada");
+  };
+
+  // Si no está autenticado, no renderizar nada (el efecto redirigirá)
+  if (!isAuthenticated || !usuario) {
+    return null;
+  }
 
   return (
     <VentasProvider>
@@ -40,7 +73,7 @@ export default function RecepcionDashboard() {
             <div className="recepcion-topbar-textos">
               <span className="recepcion-fecha">📅 {fechaHoy()}</span>
               <span className="recepcion-usuario-nombre">
-                {usuario?.nombre || "Recepcionista"}
+                {usuario?.fullName || usuario?.nombre || usuario?.username || "Recepcionista"}
               </span>
             </div>
           </div>
@@ -55,8 +88,12 @@ export default function RecepcionDashboard() {
                 {item.label}
               </button>
             ))}
-            <button className="recepcion-logout" onClick={logout} title="Cerrar sesión">
-              🚪
+            <button 
+              className="recepcion-logout" 
+              onClick={handleLogout} 
+              title="Cerrar sesión"
+            >
+              🚪 Salir
             </button>
           </nav>
         </header>

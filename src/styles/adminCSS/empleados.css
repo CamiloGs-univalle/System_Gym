@@ -280,7 +280,7 @@
 .empleados-container .data-table-search input:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.1);
+    box-shadow: 0 0 0 3px rgb(255, 106, 0);
 }
 
 .empleados-container .data-table-search input::placeholder {

@@ -1,6 +1,4 @@
 // src/services/productosService.js
-// Bloque 2 - Inventario. Endpoints: /api/categories y /api/products
-
 import api from './api';
 
 export const productosService = {
@@ -9,45 +7,55 @@ export const productosService = {
     const { data } = await api.get('/categories');
     return data;
   },
-
+  
   async crearCategoria(datos) {
     const { data } = await api.post('/categories', datos);
     return data;
   },
-
+  
   async actualizarCategoria(id, datos) {
     const { data } = await api.put(`/categories/${id}`, datos);
     return data;
   },
+  
+  async eliminarCategoria(id) {
+    const { data } = await api.delete(`/categories/${id}`);
+    return data;
+  },
 
   // ---- Productos ----
-  async listar() {
+  async listarProductos() {
     const { data } = await api.get('/products');
     return data;
   },
-
-  async obtenerPorId(id) {
+  
+  async obtenerProductoPorId(id) {
     const { data } = await api.get(`/products/${id}`);
     return data;
   },
-
-  async listarPorCategoria(categoryId) {
+  
+  async listarProductosPorCategoria(categoryId) {
     const { data } = await api.get(`/products/category/${categoryId}`);
     return data;
   },
-
-  async listarBajoStock() {
+  
+  async listarProductosBajoStock() {
     const { data } = await api.get('/products/low-stock');
     return data;
   },
-
-  async crear(datos) {
+  
+  async crearProducto(datos) {
     const { data } = await api.post('/products', datos);
     return data;
   },
-
-  async actualizar(id, datos) {
+  
+  async actualizarProducto(id, datos) {
     const { data } = await api.put(`/products/${id}`, datos);
+    return data;
+  },
+  
+  async eliminarProducto(id) {
+    const { data } = await api.delete(`/products/${id}`);
     return data;
   },
 };

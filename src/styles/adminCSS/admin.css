@@ -985,3 +985,83 @@
 .fab-button:active {
     transform: scale(0.95);
 }
+
+/* Estilos para el botón de cerrar sesión */
+.exec-header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.exec-logout-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+}
+
+.exec-logout-btn:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+}
+
+.exec-logout-btn:active {
+    transform: translateY(0);
+}
+
+.exec-logout-icon {
+    font-size: 1.1rem;
+}
+
+.exec-logout-text {
+    font-size: 0.875rem;
+}
+
+/* Ajuste responsive para el header */
+@media (max-width: 768px) {
+    .exec-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+
+    .exec-header-left {
+        text-align: center;
+    }
+
+    .exec-header-right {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .exec-logout-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8rem;
+    }
+
+    .exec-logout-text {
+        display: none; /* Oculta el texto en móvil, solo muestra el icono */
+    }
+}
+
+/* Opcional: Estilo para el botón cuando está en estado de carga o deshabilitado */
+.exec-logout-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Animación sutil al hacer hover sobre el header */
+.exec-header-right {
+    transition: all 0.3s ease;
+}

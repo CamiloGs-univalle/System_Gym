@@ -6,7 +6,7 @@
 // Responsabilidades:
 // - Iniciar sesión contra el backend.
 // - Guardar JWT en localStorage.
-// - Guardar información del usuario.
+// - Guardar información del usuario en localStorage y Zustand.
 // - Recuperar token.
 // - Cerrar sesión.
 // - Verificar autenticación.
@@ -30,6 +30,8 @@
 // ============================================================================
 
 import api from "./api";
+// IMPORTANTE: Importar el store de Zustand
+import useAuthStore from "../store/authStore";
 
 // ============================================================================
 // Claves utilizadas en localStorage
@@ -122,12 +124,13 @@ export const authService = {
         role: data.data.role,
         id: data.data.id,
         email: data.data.email,
+        fullName: data.data.fullName || data.data.username,
       };
 
     }
 
     // ------------------------------------------------------------------------
-    // Guardar token
+    // Guardar token en localStorage
     // ------------------------------------------------------------------------
 
     if (token) {
@@ -137,21 +140,37 @@ export const authService = {
         token
       );
 
-      console.log("TOKEN GUARDADO");
+      console.log("✅ TOKEN GUARDADO EN LOCALSTORAGE");
     }
 
     // ------------------------------------------------------------------------
-    // Guardar usuario
+    // Guardar usuario en localStorage y en Zustand
     // ------------------------------------------------------------------------
 
     if (user) {
 
+      // Guardar en localStorage
       localStorage.setItem(
         USER_KEY,
         JSON.stringify(user)
       );
 
-      console.log("USUARIO GUARDADO");
+      console.log("✅ USUARIO GUARDADO EN LOCALSTORAGE");
+      console.log("📦 Usuario:", user);
+
+      // --- NUEVO: Guardar en el store de Zustand ---
+      // Usamos getState() para acceder al store sin hooks
+      const store = useAuthStore.getState();
+      if (store.setUsuario) {
+        store.setUsuario(user);
+        console.log("✅ USUARIO GUARDADO EN ZUSTAND STORE");
+      } else {
+        console.warn("⚠️ setUsuario no está disponible en el store");
+      }
+
+      // Verificar que se guardó en Zustand
+      const zustandUser = useAuthStore.getState().usuario;
+      console.log("🔍 Usuario en Zustand después de guardar:", zustandUser);
     }
 
     // ------------------------------------------------------------------------
@@ -175,6 +194,16 @@ export const authService = {
 
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+
+    // --- NUEVO: Limpiar Zustand ---
+    const store = useAuthStore.getState();
+    if (store.clearUsuario) {
+      store.clearUsuario();
+      console.log("✅ USUARIO ELIMINADO DE ZUSTAND STORE");
+    } else if (store.setUsuario) {
+      store.setUsuario(null);
+      console.log("✅ USUARIO ELIMINADO DE ZUSTAND STORE");
+    }
 
   },
 
@@ -213,6 +242,35 @@ export const authService = {
     );
 
   },
+
+  // ==========================================================================
+  // Restaurar sesión desde localStorage al store de Zustand
+  // ==========================================================================
+  restoreSession() {
+
+    const token = this.getToken();
+    const user = this.getStoredUser();
+
+    console.log("=================================");
+    console.log("RESTAURANDO SESIÓN");
+    console.log("=================================");
+    console.log("Token:", token ? "✅ SI" : "❌ NO");
+    console.log("Usuario:", user ? "✅ SI" : "❌ NO");
+
+    if (token && user) {
+      const store = useAuthStore.getState();
+      if (store.setUsuario) {
+        store.setUsuario(user);
+        console.log("✅ SESIÓN RESTAURADA EN ZUSTAND");
+        console.log("👤 Usuario restaurado:", user);
+        return true;
+      }
+    }
+
+    console.log("❌ No se pudo restaurar la sesión");
+    return false;
+  },
+
 };
 
 export default authService;

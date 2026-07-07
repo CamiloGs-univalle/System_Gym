@@ -1,6 +1,16 @@
-import { useState, useMemo } from "react";
-import { clientes as clientesIniciales } from "../../mock/clientes";
+// ============================================
+// CLIENTES PANEL - Gestión de Clientes
+// ============================================
+// Integración completa con backend en /api/clients
+// ============================================
+
+import { useState, useMemo, useEffect } from "react";
 import Button from "../../components/ui/Button";
+import clientesService from "../../services/clientesService";
+
+// ============================================
+// CONSTANTES
+// ============================================
 
 const CLIENTE_VACIO = {
     nombre: "",
@@ -18,14 +28,22 @@ const CLIENTE_VACIO = {
     proximoPago: ""
 };
 
-// Colores para avatares
 const AVATAR_COLORS = [
     '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e',
     '#f59e0b', '#10b981', '#06b6d4', '#3b82f6'
 ];
 
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
+
 export default function ClientesPanel() {
-    const [clientesList, setClientesList] = useState(clientesIniciales);
+    // ============================================
+    // ESTADO
+    // ============================================
+    
+    const [clientesList, setClientesList] = useState([]);
+    const [cargandoLista, setCargandoLista] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [filtroEstado, setFiltroEstado] = useState("todos");
     const [filtroMembresia, setFiltroMembresia] = useState("todas");
@@ -37,8 +55,116 @@ export default function ClientesPanel() {
     const [clienteAEliminar, setClienteAEliminar] = useState(null);
     const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
     const [vistaDetalle, setVistaDetalle] = useState(false);
+    const [cargando, setCargando] = useState(false);
 
-    // Calcular estado del cliente
+    // ============================================
+    // EFECTO: CARGAR CLIENTES DEL BACKEND
+    // ============================================
+    useEffect(() => {
+        cargarClientes();
+    }, []);
+
+    const cargarClientes = async () => {
+        setCargandoLista(true);
+        try {
+            console.log("📥 Cargando clientes desde el backend...");
+            const response = await clientesService.listar();
+            console.log("✅ Clientes cargados:", response);
+            
+            // Extraer datos de la respuesta
+            let data = response.data || response || [];
+            
+            // Si la respuesta tiene estructura { data: [...] }
+            if (data.data && Array.isArray(data.data)) {
+                data = data.data;
+            }
+            
+            // Mapear al formato del frontend
+            const clientesMapeados = data.map(mapBackendToFrontend);
+            console.log(`✅ Clientes mapeados: ${clientesMapeados.length}`);
+            setClientesList(clientesMapeados);
+            
+        } catch (error) {
+            console.error("❌ Error al cargar clientes:", error);
+            alert("Error al cargar la lista de clientes");
+        } finally {
+            setCargandoLista(false);
+        }
+    };
+
+    // ============================================
+    // FUNCIONES DE MAPEO
+    // ============================================
+    
+    /**
+     * Mapea datos del backend al formato del frontend
+     */
+    const mapBackendToFrontend = (data) => {
+        // Calcular días restantes si hay fecha de expiración
+        let diasRestantes = 0;
+        if (data.membershipExpirationDate) {
+            const hoy = new Date();
+            const expiracion = new Date(data.membershipExpirationDate);
+            const diffTime = expiracion - hoy;
+            diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+        
+        return {
+            id: data.id,
+            nombre: data.fullName || data.nombre || '',
+            cedula: data.dni || data.cedula || '',
+            telefono: data.phoneNumber || data.telefono || '',
+            email: data.email || '',
+            fechaRegistro: data.enrollmentDate || data.fechaRegistro || new Date().toISOString().split('T')[0],
+            entrenador: data.assignedTrainerName || data.entrenador || 'No asignado',
+            notas: data.notes || data.notas || '',
+            membresia: data.membershipType || data.membresia || 'mensual',
+            ultimoPago: data.lastPaymentDate || data.ultimoPago || '',
+            proximoPago: data.nextPaymentDate || data.proximoPago || '',
+            estadoManual: null,
+            mensualidad: {
+                activa: diasRestantes > 0 && data.active !== false,
+                diasRestantes: Math.max(0, diasRestantes),
+                precioMensual: data.monthlyPrice || data.precioMensual || 0,
+                precioDia: data.dailyPrice || data.precioDia || 0
+            },
+            active: data.active !== false,
+            // Guardar datos originales para referencia
+            _raw: data
+        };
+    };
+
+    /**
+     * Mapea datos del frontend al formato del backend
+     */
+    const mapFrontendToBackend = (data) => {
+        const dias = parseInt(data.diasRestantes) || 0;
+        const hoy = new Date();
+        const fechaExpiracion = new Date(hoy);
+        fechaExpiracion.setDate(fechaExpiracion.getDate() + dias);
+        
+        return {
+            fullName: data.nombre,
+            dni: data.cedula,
+            phoneNumber: data.telefono || null,
+            email: data.email || null,
+            enrollmentDate: data.fechaRegistro || hoy.toISOString().split('T')[0],
+            membershipType: data.membresia || 'mensual',
+            membershipExpirationDate: dias > 0 ? fechaExpiracion.toISOString().split('T')[0] : null,
+            monthlyPrice: parseFloat(data.precioMensual) || 80000,
+            dailyPrice: parseFloat(data.precioDia) || 5000,
+            assignedTrainerName: data.entrenador || 'No asignado',
+            notes: data.notas || null,
+            lastPaymentDate: data.ultimoPago || null,
+            nextPaymentDate: data.proximoPago || null,
+            active: dias > 0
+        };
+    };
+
+    // ============================================
+    // FUNCIONES DE CÁLCULO
+    // ============================================
+    
     const calcularEstado = (cliente) => {
         if (cliente.estadoManual) return cliente.estadoManual;
         return cliente.mensualidad?.activa && cliente.mensualidad?.diasRestantes > 0
@@ -50,7 +176,6 @@ export default function ClientesPanel() {
         return cliente.mensualidad?.diasRestantes || 0;
     };
 
-    // Obtener iniciales para avatar
     const getInitials = (nombre) => {
         return nombre
             .split(' ')
@@ -60,7 +185,6 @@ export default function ClientesPanel() {
             .toUpperCase();
     };
 
-    // Obtener color de avatar basado en nombre
     const getAvatarColor = (nombre) => {
         let hash = 0;
         for (let i = 0; i < nombre.length; i++) {
@@ -69,7 +193,30 @@ export default function ClientesPanel() {
         return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
     };
 
-    // Filtrar y ordenar clientes
+    const getEstadoColor = (estado, diasRestantes) => {
+        if (estado === "inactivo") return "#ef4444";
+        if (diasRestantes <= 3) return "#f59e0b";
+        return "#10b981";
+    };
+
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '—';
+        try {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('es-ES', { 
+                day: '2-digit', 
+                month: 'short', 
+                year: 'numeric' 
+            });
+        } catch {
+            return dateStr;
+        }
+    };
+
+    // ============================================
+    // FILTRADO Y ORDENAMIENTO
+    // ============================================
+    
     const filteredClientes = useMemo(() => {
         let result = clientesList.filter((cliente) => {
             const estado = calcularEstado(cliente);
@@ -94,6 +241,10 @@ export default function ClientesPanel() {
         return result;
     }, [clientesList, searchTerm, filtroEstado, filtroMembresia, orden]);
 
+    // ============================================
+    // ESTADÍSTICAS
+    // ============================================
+    
     const totalActivos = clientesList.filter((c) => calcularEstado(c) === "activo").length;
     const totalInactivos = clientesList.length - totalActivos;
     const totalPorVencer = clientesList.filter((c) => {
@@ -101,23 +252,16 @@ export default function ClientesPanel() {
         return dias > 0 && dias <= 5;
     }).length;
 
-    const getEstadoColor = (estado, diasRestantes) => {
-        if (estado === "inactivo") return "#ef4444";
-        if (diasRestantes <= 3) return "#f59e0b";
-        return "#10b981";
-    };
-
-    const cambiarOrden = (campo) => {
-        setOrden(prev => ({
-            campo,
-            direccion: prev.campo === campo && prev.direccion === 'asc' ? 'desc' : 'asc'
-        }));
-    };
-
-    // CRUD Operations
+    // ============================================
+    // CRUD OPERATIONS
+    // ============================================
+    
     const abrirNuevoCliente = () => {
         setEditandoId(null);
-        setForm({ ...CLIENTE_VACIO, fechaRegistro: new Date().toISOString().split('T')[0] });
+        setForm({ 
+            ...CLIENTE_VACIO, 
+            fechaRegistro: new Date().toISOString().split('T')[0] 
+        });
         setModalAbierto(true);
     };
 
@@ -132,8 +276,8 @@ export default function ClientesPanel() {
             entrenador: cliente.entrenador,
             notas: cliente.notas || "",
             diasRestantes: String(cliente.mensualidad?.diasRestantes || 0),
-            precioMensual: String(cliente.mensualidad?.precioMensual || 0),
-            precioDia: String(cliente.mensualidad?.precioDia || 0),
+            precioMensual: String(cliente.mensualidad?.precioMensual || 80000),
+            precioDia: String(cliente.mensualidad?.precioDia || 5000),
             membresia: cliente.membresia || "mensual",
             ultimoPago: cliente.ultimoPago || "",
             proximoPago: cliente.proximoPago || ""
@@ -158,66 +302,115 @@ export default function ClientesPanel() {
         setForm((prev) => ({ ...prev, [campo]: valor }));
     };
 
-    const guardarCliente = () => {
-        if (!form.nombre.trim() || !form.cedula.trim()) {
-            alert("Nombre y cédula son obligatorios");
+    const guardarCliente = async () => {
+        // ============================================
+        // VALIDACIONES
+        // ============================================
+        
+        if (!form.nombre.trim()) {
+            alert("❌ El nombre es obligatorio");
+            return;
+        }
+        
+        if (!form.cedula.trim()) {
+            alert("❌ La cédula es obligatoria");
+            return;
+        }
+        
+        // Validar que la cédula sea numérica
+        if (!/^\d+$/.test(form.cedula.replace(/\D/g, ''))) {
+            alert("❌ La cédula debe contener solo números");
             return;
         }
 
-        const dias = parseInt(form.diasRestantes, 10) || 0;
+        setCargando(true);
 
-        if (editandoId) {
-            setClientesList((prev) =>
-                prev.map((c) =>
-                    c.id === editandoId
-                        ? {
-                            ...c,
-                            nombre: form.nombre,
-                            cedula: form.cedula,
-                            telefono: form.telefono,
-                            email: form.email,
-                            fechaRegistro: form.fechaRegistro,
-                            entrenador: form.entrenador || "No asignado",
-                            notas: form.notas,
-                            membresia: form.membresia,
-                            ultimoPago: form.ultimoPago,
-                            proximoPago: form.proximoPago,
-                            mensualidad: {
-                                ...c.mensualidad,
-                                activa: dias > 0,
-                                diasRestantes: dias,
-                                precioMensual: parseInt(form.precioMensual, 10) || 0,
-                                precioDia: parseInt(form.precioDia, 10) || 0
-                            }
-                        }
-                        : c
-                )
-            );
-        } else {
-            const nuevoCliente = {
-                id: Date.now(),
-                nombre: form.nombre,
-                cedula: form.cedula,
-                telefono: form.telefono,
-                email: form.email,
+        try {
+            // Preparar datos para el backend
+            const data = {
+                nombre: form.nombre.trim(),
+                cedula: form.cedula.replace(/\D/g, ''),
+                telefono: form.telefono ? form.telefono.replace(/\D/g, '') : '',
+                email: form.email || '',
                 fechaRegistro: form.fechaRegistro || new Date().toISOString().split('T')[0],
-                entrenador: form.entrenador || "No asignado",
-                notas: form.notas,
-                membresia: form.membresia || "mensual",
-                ultimoPago: form.ultimoPago,
-                proximoPago: form.proximoPago,
-                estadoManual: null,
-                mensualidad: {
-                    activa: dias > 0,
-                    diasRestantes: dias,
-                    precioMensual: parseInt(form.precioMensual, 10) || 0,
-                    precioDia: parseInt(form.precioDia, 10) || 0
-                }
+                entrenador: form.entrenador || 'No asignado',
+                notas: form.notas || '',
+                diasRestantes: form.diasRestantes || '0',
+                precioMensual: form.precioMensual || '80000',
+                precioDia: form.precioDia || '5000',
+                membresia: form.membresia || 'mensual',
+                ultimoPago: form.ultimoPago || '',
+                proximoPago: form.proximoPago || ''
             };
-            setClientesList((prev) => [...prev, nuevoCliente]);
-        }
 
-        cerrarModal();
+            console.log("📦 Datos a guardar:", data);
+
+            let clienteGuardado;
+            
+            if (editandoId) {
+                // ============================================
+                // ACTUALIZAR CLIENTE EXISTENTE
+                // ============================================
+                console.log(`🔄 Actualizando cliente ${editandoId}...`);
+                
+                // Primero obtener el cliente actual
+                const clienteActual = clientesList.find(c => c.id === editandoId);
+                if (!clienteActual) {
+                    throw new Error("Cliente no encontrado");
+                }
+                
+                // Actualizar en el backend
+                clienteGuardado = await clientesService.actualizar(editandoId, data);
+                console.log("✅ Cliente actualizado:", clienteGuardado);
+                
+                // Actualizar la lista local
+                setClientesList(clientesList.map(c => 
+                    c.id === editandoId ? mapBackendToFrontend(clienteGuardado) : c
+                ));
+                
+            } else {
+                // ============================================
+                // CREAR NUEVO CLIENTE
+                // ============================================
+                console.log("📝 Creando nuevo cliente...");
+                clienteGuardado = await clientesService.crear(data);
+                console.log("✅ Cliente creado:", clienteGuardado);
+                
+                // Agregar a la lista local
+                const nuevoCliente = mapBackendToFrontend(clienteGuardado);
+                setClientesList([nuevoCliente, ...clientesList]);
+            }
+
+            cerrarModal();
+            alert("✅ Cliente guardado exitosamente!");
+
+        } catch (error) {
+            console.error("❌ Error guardando cliente:", error);
+            
+            let errorMessage = "Error al guardar el cliente";
+            
+            if (error.response) {
+                const status = error.response.status;
+                const data = error.response.data;
+                
+                if (status === 400) {
+                    errorMessage = data?.message || "Datos inválidos. Verifica la información.";
+                } else if (status === 409) {
+                    errorMessage = "Ya existe un cliente con esta cédula.";
+                } else if (status === 401 || status === 403) {
+                    errorMessage = "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.";
+                    setTimeout(() => {
+                        window.location.href = "/login";
+                    }, 3000);
+                }
+            } else if (error.message?.includes("Failed to fetch")) {
+                errorMessage = "No se pudo conectar con el servidor. Verifica que el backend esté ejecutándose.";
+            }
+            
+            alert(`❌ ${errorMessage}`);
+        } finally {
+            setCargando(false);
+        }
     };
 
     const alternarEstadoManual = (clienteId) => {
@@ -249,11 +442,34 @@ export default function ClientesPanel() {
         setClienteAEliminar(null);
     };
 
-    const formatDate = (dateStr) => {
-        if (!dateStr) return '—';
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+    const cambiarOrden = (campo) => {
+        setOrden(prev => ({
+            campo,
+            direccion: prev.campo === campo && prev.direccion === 'asc' ? 'desc' : 'asc'
+        }));
     };
+
+    // ============================================
+    // RENDERIZADO
+    // ============================================
+    
+    if (cargandoLista) {
+        return (
+            <div className="clientes-modern-panel">
+                <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    height: '300px',
+                    flexDirection: 'column',
+                    gap: '20px'
+                }}>
+                    <span style={{ fontSize: '40px' }}>⏳</span>
+                    <p style={{ color: '#666' }}>Cargando clientes...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="clientes-modern-panel">
@@ -524,7 +740,7 @@ export default function ClientesPanel() {
                 </div>
             )}
 
-            {/* Modal Crear/Editar - VERSIÓN MEJORADA CON DISEÑO DE TARJETA */}
+            {/* Modal Crear/Editar */}
             {modalAbierto && (
                 <div className="modal-overlay" onClick={cerrarModal}>
                     <div className="modal-card modal-form" onClick={(e) => e.stopPropagation()}>
@@ -557,6 +773,7 @@ export default function ClientesPanel() {
                                     onChange={(e) => handleFormChange("nombre", e.target.value)}
                                     placeholder="Ej: Ana Beltrán"
                                     className="campo-input"
+                                    disabled={cargando}
                                 />
                             </div>
 
@@ -569,9 +786,11 @@ export default function ClientesPanel() {
                                 <input
                                     type="text"
                                     value={form.cedula}
-                                    onChange={(e) => handleFormChange("cedula", e.target.value)}
+                                    onChange={(e) => handleFormChange("cedula", e.target.value.replace(/\D/g, ''))}
                                     placeholder="Ej: 1166665555"
                                     className="campo-input"
+                                    disabled={cargando}
+                                    maxLength={15}
                                 />
                             </div>
 
@@ -582,9 +801,10 @@ export default function ClientesPanel() {
                                 <input
                                     type="text"
                                     value={form.telefono}
-                                    onChange={(e) => handleFormChange("telefono", e.target.value)}
+                                    onChange={(e) => handleFormChange("telefono", e.target.value.replace(/\D/g, ''))}
                                     placeholder="Ej: 3014455667"
                                     className="campo-input"
+                                    disabled={cargando}
                                 />
                             </div>
 
@@ -599,6 +819,7 @@ export default function ClientesPanel() {
                                     onChange={(e) => handleFormChange("email", e.target.value)}
                                     placeholder="Ej: ana@email.com"
                                     className="campo-input"
+                                    disabled={cargando}
                                 />
                             </div>
 
@@ -613,6 +834,7 @@ export default function ClientesPanel() {
                                     onChange={(e) => handleFormChange("entrenador", e.target.value)}
                                     placeholder="Ej: Laura Martínez"
                                     className="campo-input"
+                                    disabled={cargando}
                                 />
                             </div>
 
@@ -624,6 +846,7 @@ export default function ClientesPanel() {
                                     value={form.membresia}
                                     onChange={(e) => handleFormChange("membresia", e.target.value)}
                                     className="campo-input"
+                                    disabled={cargando}
                                 >
                                     <option value="mensual">📅 Mensual</option>
                                     <option value="trimestral">📆 Trimestral</option>
@@ -642,6 +865,8 @@ export default function ClientesPanel() {
                                     onChange={(e) => handleFormChange("diasRestantes", e.target.value)}
                                     placeholder="0"
                                     className="campo-input"
+                                    disabled={cargando}
+                                    min="0"
                                 />
                             </div>
 
@@ -655,6 +880,8 @@ export default function ClientesPanel() {
                                     onChange={(e) => handleFormChange("precioMensual", e.target.value)}
                                     placeholder="80000"
                                     className="campo-input"
+                                    disabled={cargando}
+                                    min="0"
                                 />
                             </div>
 
@@ -668,6 +895,8 @@ export default function ClientesPanel() {
                                     onChange={(e) => handleFormChange("precioDia", e.target.value)}
                                     placeholder="5000"
                                     className="campo-input"
+                                    disabled={cargando}
+                                    min="0"
                                 />
                             </div>
 
@@ -682,6 +911,7 @@ export default function ClientesPanel() {
                                             value={form.fechaRegistro}
                                             onChange={(e) => handleFormChange("fechaRegistro", e.target.value)}
                                             className="campo-input"
+                                            disabled={cargando}
                                         />
                                     </div>
                                     <div className="fecha-item">
@@ -691,6 +921,7 @@ export default function ClientesPanel() {
                                             value={form.ultimoPago}
                                             onChange={(e) => handleFormChange("ultimoPago", e.target.value)}
                                             className="campo-input"
+                                            disabled={cargando}
                                         />
                                     </div>
                                     <div className="fecha-item">
@@ -700,6 +931,7 @@ export default function ClientesPanel() {
                                             value={form.proximoPago}
                                             onChange={(e) => handleFormChange("proximoPago", e.target.value)}
                                             className="campo-input"
+                                            disabled={cargando}
                                         />
                                     </div>
                                 </div>
@@ -716,16 +948,17 @@ export default function ClientesPanel() {
                                     placeholder="Ej: Alergias, lesiones, restricciones físicas..."
                                     rows={3}
                                     className="campo-input campo-textarea"
+                                    disabled={cargando}
                                 />
                             </div>
                         </div>
 
                         <div className="modal-acciones">
-                            <button className="btn-cancelar" onClick={cerrarModal}>
+                            <button className="btn-cancelar" onClick={cerrarModal} disabled={cargando}>
                                 Cancelar
                             </button>
-                            <Button variant="primary" onClick={guardarCliente} className="btn-guardar">
-                                {editandoId ? "💾 Guardar cambios" : "✅ Crear cliente"}
+                            <Button variant="primary" onClick={guardarCliente} className="btn-guardar" disabled={cargando}>
+                                {cargando ? "⏳ Guardando..." : (editandoId ? "💾 Guardar cambios" : "✅ Crear cliente")}
                             </Button>
                         </div>
                     </div>
