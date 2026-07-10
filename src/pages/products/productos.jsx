@@ -1,33 +1,35 @@
-// src/pages/admin/ProductosAdminPanel.jsx
-/**
- * Panel de Administración de Inventario
- * 
- * Este componente permite gestionar categorías y productos del gimnasio.
- * Se conecta al backend a través del servicio productosService.
- * 
- * @component
- * @returns {JSX.Element} Panel de inventario completo
- */
+// ============================================================
+// ARCHIVO: src/pages/products/productos.jsx
+// DESCRIPCIÓN: Panel de gestión de inventario (categorías y productos)
+// VERSIÓN: 2.0 - CORREGIDA (Manejo correcto de stock con backend)
+// ============================================================
+// 
+// FUNCIONALIDADES:
+// - CRUD completo de categorías y productos
+// - Filtros por categoría, búsqueda y stock bajo
+// - Ajuste de stock con validación del backend
+// - Estadísticas en tiempo real
+// - Modal para crear/editar productos
+//
+// ============================================================
 
-// Importaciones de React
+// ============================================================
+// IMPORTACIONES
+// ============================================================
+
 import React, { useState, useEffect, useMemo } from 'react';
-
-// Importaciones de componentes UI
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-
-// Importación del servicio para conectar con el backend
 import { productosService } from '../../services/productosService';
 
+// ============================================================
+// FUNCIONES DE UTILIDAD
+// ============================================================
+
 /**
- * Función para formatear valores monetarios en pesos colombianos (COP)
- * 
+ * Formatea un valor numérico a pesos colombianos (COP)
  * @param {number|string} v - Valor a formatear
- * @returns {string} Valor formateado con símbolo de pesos
- * 
- * @example
- * COP(1000000) // "$1.000.000"
- * COP(undefined) // "$0"
+ * @returns {string} - Valor formateado (ej: "$1.000.000")
  */
 const COP = (v) => {
     if (v === undefined || v === null || isNaN(v)) return "$0";
@@ -36,16 +38,16 @@ const COP = (v) => {
 
 /**
  * Genera un ID único para uso temporal (cuando el backend no devuelve ID)
- * @returns {string} ID único
+ * @returns {string} - ID único temporal
  */
 const generarIdUnico = () => {
     return `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 };
 
 /**
- * Extrae los datos de una respuesta de la API
+ * Extrae los datos de una respuesta de la API (categorías)
  * @param {Object} response - Respuesta de la API
- * @returns {Array} Array de categorías
+ * @returns {Array} - Array de categorías
  */
 const extraerCategorias = (response) => {
     if (Array.isArray(response)) return response;
@@ -58,7 +60,7 @@ const extraerCategorias = (response) => {
 /**
  * Extrae los productos de una respuesta de la API
  * @param {Object} response - Respuesta de la API
- * @returns {Array} Array de productos
+ * @returns {Array} - Array de productos
  */
 const extraerProductos = (response) => {
     if (Array.isArray(response)) return response;
@@ -69,38 +71,40 @@ const extraerProductos = (response) => {
 };
 
 /**
- * Extrae una categoría de la respuesta de la API
+ * Extrae una categoría o producto de la respuesta de la API
  * @param {Object} response - Respuesta de la API
- * @returns {Object|null} Categoría extraída o null
+ * @returns {Object|null} - Entidad extraída o null
  */
-const extraerCategoria = (response) => {
+const extraerEntidad = (response) => {
     if (response?.data) return response.data;
     if (response?.data?.data) return response.data.data;
     return response;
 };
 
-/**
- * Componente principal del panel de inventario
- */
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
+
 export default function ProductosPanel() {
     // ============================================================
     // 1. ESTADOS PARA DATOS DEL BACKEND
     // ============================================================
     
-    const [categoriasList, setCategoriasList] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [categoriasList, setCategoriasList] = useState([]);  // Lista de categorías con sus productos
+    const [loading, setLoading] = useState(true);              // Estado de carga
+    const [error, setError] = useState(null);                  // Mensaje de error
 
     // ============================================================
     // 2. ESTADOS PARA INTERFAZ DE USUARIO (UI)
     // ============================================================
 
-    const [nuevaCategoria, setNuevaCategoria] = useState("");
-    const [busqueda, setBusqueda] = useState("");
-    const [categoriaSeleccionada, setCategoriaSeleccionada] = useState("todas");
-    const [modalAbierto, setModalAbierto] = useState(false);
-    const [productoEditando, setProductoEditando] = useState(null);
-    const [soloStockBajo, setSoloStockBajo] = useState(false);
+    const [nuevaCategoria, setNuevaCategoria] = useState("");          // Input de nueva categoría
+    const [busqueda, setBusqueda] = useState("");                      // Búsqueda de productos
+    const [categoriaSeleccionada, setCategoriaSeleccionada] = useState("todas"); // Filtro por categoría
+    const [modalAbierto, setModalAbierto] = useState(false);           // Control del modal
+    const [productoEditando, setProductoEditando] = useState(null);    // Producto en edición
+    const [soloStockBajo, setSoloStockBajo] = useState(false);         // Filtro de stock bajo
+    const [actualizandoStockId, setActualizandoStockId] = useState(null); // ID del producto en actualización
 
     // ============================================================
     // 3. ESTADO PARA EL FORMULARIO DE PRODUCTO
@@ -120,6 +124,9 @@ export default function ProductosPanel() {
     // 4. EFECTO PARA CARGAR DATOS INICIALES
     // ============================================================
 
+    /**
+     * Al montar el componente, carga categorías y productos del backend
+     */
     useEffect(() => {
         cargarDatos();
     }, []);
@@ -129,10 +136,7 @@ export default function ProductosPanel() {
     // ============================================================
 
     /**
-     * Función asíncrona que obtiene todas las categorías con sus productos
-     * desde el backend a través del servicio productosService.
-     * 
-     * ✅ CORREGIDO: Carga categorías y productos por separado
+     * Carga todas las categorías y productos del backend
      * 
      * @async
      * @returns {Promise<void>}
@@ -165,7 +169,9 @@ export default function ProductosPanel() {
                         precio: p.salePrice || p.precio || 0,
                         costo: p.costPrice || p.costo || 0,
                         stock: p.stock || 0,
-                        stockMinimo: p.minimumStock || p.stockMinimo || 0
+                        stockMinimo: p.minimumStock || p.stockMinimo || 0,
+                        // ✅ Guardamos el objeto completo para futuras referencias
+                        _raw: p
                     });
                 }
             });
@@ -179,10 +185,10 @@ export default function ProductosPanel() {
                     productos: productosPorCategoria[cat.id] || []
                 }));
             
-            console.log('📦 Categorías cargadas:', categoriasConProductos);
+            console.log('📦 Categorías cargadas:', categoriasConProductos.length);
             setCategoriasList(categoriasConProductos);
         } catch (err) {
-            console.error('Error cargando datos:', err);
+            console.error('❌ Error cargando datos:', err);
             setError(err.message || 'Error al cargar los datos del inventario');
             setCategoriasList([]);
         } finally {
@@ -194,6 +200,9 @@ export default function ProductosPanel() {
     // 6. CÁLCULOS CON useMemo (Estadísticas y Filtros)
     // ============================================================
 
+    /**
+     * Total de productos en el inventario
+     */
     const totalProductos = useMemo(() => {
         if (!Array.isArray(categoriasList)) return 0;
         return categoriasList.reduce((acc, cat) => {
@@ -201,6 +210,9 @@ export default function ProductosPanel() {
         }, 0);
     }, [categoriasList]);
 
+    /**
+     * Total de unidades en stock
+     */
     const totalStock = useMemo(() => {
         if (!Array.isArray(categoriasList)) return 0;
         return categoriasList.reduce((acc, cat) => {
@@ -208,6 +220,9 @@ export default function ProductosPanel() {
         }, 0);
     }, [categoriasList]);
 
+    /**
+     * Número de productos con stock bajo
+     */
     const productosBajoStock = useMemo(() => {
         if (!Array.isArray(categoriasList)) return 0;
         return categoriasList.reduce((acc, cat) => {
@@ -216,6 +231,9 @@ export default function ProductosPanel() {
         }, 0);
     }, [categoriasList]);
 
+    /**
+     * Valor total del inventario (precio * stock)
+     */
     const valorInventario = useMemo(() => {
         if (!Array.isArray(categoriasList)) return 0;
         return categoriasList.reduce((acc, cat) => {
@@ -223,14 +241,19 @@ export default function ProductosPanel() {
         }, 0);
     }, [categoriasList]);
 
+    /**
+     * Productos filtrados según búsqueda, categoría y stock bajo
+     */
     const productosFiltrados = useMemo(() => {
         if (!Array.isArray(categoriasList)) return [];
         
         let resultados = [];
         
         categoriasList.forEach(cat => {
-            if (categoriaSeleccionada !== "todas" && cat?.id !== parseInt(categoriaSeleccionada)) return;
+            // Filtro por categoría
+            if (categoriaSeleccionada !== "todas" && String(cat?.id) !== String(categoriaSeleccionada)) return;
             
+            // Filtro por búsqueda y stock bajo
             let productos = (cat?.productos || []).filter(p => {
                 const busca = busqueda.toLowerCase();
                 const coincide = p?.nombre?.toLowerCase().includes(busca) || 
@@ -258,7 +281,7 @@ export default function ProductosPanel() {
     // ============================================================
 
     /**
-     * Agrega una nueva categoría al backend y actualiza el estado local
+     * Agrega una nueva categoría al backend
      * 
      * @async
      * @returns {Promise<void>}
@@ -284,11 +307,8 @@ export default function ProductosPanel() {
 
         try {
             const payload = { name: nombre, description: "" };
-            
             const response = await productosService.crearCategoria(payload);
-            
-            // ✅ Extraer la categoría de la respuesta
-            const categoriaCreada = extraerCategoria(response);
+            const categoriaCreada = extraerEntidad(response);
             
             console.log('✅ Categoría creada:', categoriaCreada);
             
@@ -299,7 +319,6 @@ export default function ProductosPanel() {
                 productos: []
             };
             
-            // ✅ Actualizar el estado local
             const currentList = Array.isArray(categoriasList) ? categoriasList : [];
             setCategoriasList([...currentList, categoriaFormateada]);
             setNuevaCategoria("");
@@ -307,21 +326,21 @@ export default function ProductosPanel() {
             alert(`✅ Categoría "${nombre}" creada exitosamente`);
             
         } catch (err) {
-            console.error('Error al crear categoría:', err);
+            console.error('❌ Error al crear categoría:', err);
             
             if (err.details?.violations) {
                 const mensaje = err.details.violations.map(v => v.message).join(', ');
-                alert('Error de validación: ' + mensaje);
+                alert('❌ Error de validación: ' + mensaje);
             } else if (err.message?.includes('UNIQUE') || err.message?.includes('duplicate')) {
                 alert(`❌ La categoría "${nombre}" ya existe. Por favor usa otro nombre.`);
             } else {
-                alert('Error al crear la categoría: ' + err.message);
+                alert('❌ Error al crear la categoría: ' + err.message);
             }
         }
     };
 
     /**
-     * Elimina una categoría del backend y actualiza el estado local
+     * Elimina una categoría del backend
      * 
      * @async
      * @param {number} categoriaId - ID de la categoría a eliminar
@@ -343,8 +362,8 @@ export default function ProductosPanel() {
             await productosService.eliminarCategoria(categoriaId);
             setCategoriasList(currentList.filter(c => c.id !== categoriaId));
         } catch (err) {
-            console.error('Error al eliminar categoría:', err);
-            alert('Error al eliminar la categoría: ' + err.message);
+            console.error('❌ Error al eliminar categoría:', err);
+            alert('❌ Error al eliminar la categoría: ' + err.message);
         }
     };
 
@@ -404,12 +423,12 @@ export default function ProductosPanel() {
      */
     const guardarProducto = async () => {
         if (!nuevoProducto.nombre.trim()) {
-            alert("El nombre del producto es obligatorio");
+            alert("❌ El nombre del producto es obligatorio");
             return;
         }
 
         if (!nuevoProducto.categoriaId) {
-            alert("Debes seleccionar una categoría");
+            alert("❌ Debes seleccionar una categoría");
             return;
         }
 
@@ -453,8 +472,8 @@ export default function ProductosPanel() {
                 categoriaId: ""
             });
         } catch (err) {
-            console.error('Error al guardar producto:', err);
-            alert('Error al guardar el producto: ' + err.message);
+            console.error('❌ Error al guardar producto:', err);
+            alert('❌ Error al guardar el producto: ' + err.message);
         }
     };
 
@@ -472,82 +491,154 @@ export default function ProductosPanel() {
             await productosService.eliminarProducto(productoId);
             await cargarDatos();
         } catch (err) {
-            console.error('Error al eliminar producto:', err);
-            alert('Error al eliminar el producto: ' + err.message);
+            console.error('❌ Error al eliminar producto:', err);
+            alert('❌ Error al eliminar el producto: ' + err.message);
         }
     };
 
+    // ============================================================
+    // 9. FUNCIÓN PRINCIPAL: ACTUALIZAR STOCK (CORREGIDA ✅)
+    // ============================================================
+
     /**
-     * ✅ ACTUALIZA EL STOCK DE UN PRODUCTO (CORREGIDO)
+     * ✅ ACTUALIZA EL STOCK DE UN PRODUCTO
      * 
-     * Envía los campos correctos que espera el backend:
-     * - name (nombre)
-     * - code (código)
-     * - salePrice (precio)
-     * - costPrice (costo)
-     * - stock (nuevo stock)
-     * - minimumStock (stock mínimo)
-     * - categoryId (ID de categoría)
+     * Esta función es la más importante del componente. A diferencia de la
+     * versión anterior que asumía que el cambio se guardó solo porque el
+     * PUT devolvió 200, esta versión:
+     * 
+     * 1. Envía el PUT con el nuevo stock deseado
+     * 2. Obtiene el producto actualizado del backend (GET)
+     * 3. Compara el stock enviado con el stock guardado
+     * 4. Actualiza la UI con el valor REAL del backend
+     * 5. Muestra una alerta clara si hay discrepancia
      * 
      * @async
      * @param {number} categoriaId - ID de la categoría del producto
      * @param {number} productoId - ID del producto a actualizar
-     * @param {number} nuevoStock - Nueva cantidad de stock
+     * @param {number} nuevoStock - Nueva cantidad de stock deseada
      * @returns {Promise<void>}
      */
     const actualizarStock = async (categoriaId, productoId, nuevoStock) => {
-        const stock = parseInt(nuevoStock);
-        if (isNaN(stock) || stock < 0) return;
+        // ✅ 1. Validar el stock deseado
+        const stockDeseado = parseInt(nuevoStock);
+        if (isNaN(stockDeseado) || stockDeseado < 0) {
+            console.warn('⚠️ Stock inválido:', nuevoStock);
+            return;
+        }
+
+        // ✅ 2. Prevenir doble click mientras se procesa
+        if (actualizandoStockId === productoId) {
+            console.log('⏳ Ya se está actualizando este producto');
+            return;
+        }
+        setActualizandoStockId(productoId);
 
         try {
+            // ✅ 3. Obtener la lista actual y encontrar el producto
             const currentList = Array.isArray(categoriasList) ? categoriasList : [];
             const categoria = currentList.find(c => c.id === categoriaId);
             const producto = categoria?.productos?.find(p => p.id === productoId);
 
             if (!producto) {
-                console.error('Producto no encontrado');
+                console.error('❌ Producto no encontrado');
+                setActualizandoStockId(null);
                 return;
             }
 
-            // ✅ CORREGIDO: Enviar los campos correctos que espera el backend
+            // ✅ 4. Preparar los datos para el PUT
             const datosActualizados = {
                 name: producto.nombre,
                 code: producto.codigo,
                 salePrice: producto.precio,
                 costPrice: producto.costo,
-                stock: stock,  // ← El nuevo stock
+                stock: stockDeseado,
                 minimumStock: producto.stockMinimo,
                 categoryId: parseInt(categoriaId)
             };
 
-            console.log('📤 Actualizando stock:', datosActualizados);
+            console.log(`📤 Enviando PUT /products/${productoId} con stock: ${stockDeseado}`);
+            console.log('📤 Payload completo:', JSON.stringify(datosActualizados, null, 2));
 
-            await productosService.actualizarProducto(productoId, datosActualizados);
+            // ✅ 5. Enviar la actualización al backend
+            const putResponse = await productosService.actualizarProducto(productoId, datosActualizados);
+            console.log('📥 Respuesta PUT:', putResponse);
 
-            // ✅ Actualizar estado local de manera optimista
-            setCategoriasList(
-                currentList.map(cat => {
-                    if (cat.id === categoriaId) {
-                        return {
-                            ...cat,
-                            productos: (cat.productos || []).map(p => {
-                                if (p.id === productoId) {
-                                    return { ...p, stock };
-                                }
-                                return p;
-                            })
-                        };
-                    }
-                    return cat;
-                })
-            );
+            // ✅ 6. Extraer el producto de la respuesta del PUT
+            let productoConfirmado = extraerEntidad(putResponse);
 
-            console.log('✅ Stock actualizado correctamente');
+            // ✅ 7. Si el PUT no devuelve el producto, hacer un GET
+            if (!productoConfirmado || productoConfirmado.stock === undefined) {
+                console.log('🔄 El PUT no devolvió el producto, haciendo GET...');
+                const getResponse = await productosService.obtenerProductoPorId(productoId);
+                console.log('📥 Respuesta GET:', getResponse);
+                productoConfirmado = extraerEntidad(getResponse);
+            }
+
+            // ✅ 8. Obtener el stock guardado en el backend
+            const stockGuardadoEnBackend = productoConfirmado?.stock;
+            console.log(`📊 Stock enviado: ${stockDeseado}, Stock guardado: ${stockGuardadoEnBackend}`);
+
+            // ✅ 9. ACTUALIZAR UI CON EL VALOR REAL DEL BACKEND
+            if (stockGuardadoEnBackend !== undefined) {
+                // Actualizar el estado local con el valor real del backend
+                setCategoriasList(
+                    currentList.map(cat => {
+                        if (cat.id === categoriaId) {
+                            return {
+                                ...cat,
+                                productos: (cat.productos || []).map(p => {
+                                    if (p.id === productoId) {
+                                        // ✅ Actualizar con el valor del backend
+                                        return { ...p, stock: stockGuardadoEnBackend };
+                                    }
+                                    return p;
+                                })
+                            };
+                        }
+                        return cat;
+                    })
+                );
+            } else {
+                // ❌ No se pudo obtener el stock guardado, recargar todo
+                console.warn('⚠️ No se pudo obtener el stock guardado, recargando...');
+                await cargarDatos();
+                setActualizandoStockId(null);
+                return;
+            }
+
+            // ✅ 10. Comparar y mostrar resultado
+            if (stockGuardadoEnBackend === stockDeseado) {
+                // ✅ El stock se actualizó correctamente
+                console.log('✅ Stock actualizado correctamente');
+                // No mostrar alert para no interrumpir el flujo
+            } else {
+                // ⚠️ El backend modificó el stock automáticamente
+                const diferencia = stockGuardadoEnBackend - stockDeseado;
+                console.warn('⚠️ El backend modificó el stock automáticamente', {
+                    enviado: stockDeseado,
+                    guardado: stockGuardadoEnBackend,
+                    diferencia: diferencia
+                });
+                
+                // ✅ Mostrar alerta informativa (NO de error)
+                alert(
+                    `ℹ️ El stock fue ajustado automáticamente por el sistema.\n\n` +
+                    `📤 Stock enviado: ${stockDeseado}\n` +
+                    `📥 Stock guardado: ${stockGuardadoEnBackend}\n` +
+                    `📊 Diferencia: ${diferencia > 0 ? '+' : ''}${diferencia}\n\n` +
+                    `Esto puede deberse a:\n` +
+                    `• Reglas de negocio en el backend\n` +
+                    `• Cálculos automáticos de stock\n` +
+                    `• Validaciones del sistema\n\n` +
+                    `✅ El valor mostrado ahora es el real guardado en el backend.`
+                );
+            }
 
         } catch (err) {
-            console.error('Error al actualizar stock:', err);
-            
-            // ✅ Mostrar mensaje de error más detallado
+            // ❌ Manejo de errores
+            console.error('❌ Error al actualizar stock:', err);
+
             let mensaje = 'Error al actualizar el stock: ';
             if (err.details?.violations) {
                 const violaciones = err.details.violations.map(v => v.message).join(', ');
@@ -555,15 +646,18 @@ export default function ProductosPanel() {
             } else if (err.message) {
                 mensaje += err.message;
             }
-            alert(mensaje);
-            
+            alert('❌ ' + mensaje);
+
             // ✅ Recargar datos para mantener consistencia
             await cargarDatos();
+        } finally {
+            // ✅ Liberar el bloqueo de actualización
+            setActualizandoStockId(null);
         }
     };
 
     // ============================================================
-    // 9. FUNCIÓN PARA RESETEAR FILTROS
+    // 10. FUNCIÓN PARA RESETEAR FILTROS
     // ============================================================
 
     const resetearFiltros = () => {
@@ -573,7 +667,7 @@ export default function ProductosPanel() {
     };
 
     // ============================================================
-    // 10. RENDERIZADO CONDICIONAL
+    // 11. RENDERIZADO CONDICIONAL
     // ============================================================
 
     if (loading) {
@@ -604,13 +698,15 @@ export default function ProductosPanel() {
     }
 
     // ============================================================
-    // 11. RENDERIZADO PRINCIPAL
+    // 12. RENDERIZADO PRINCIPAL
     // ============================================================
 
     return (
         <div className="inventario-page-container">
             <Card title="Inventario" icon="📦" className="inventario-card">
-                {/* Stats */}
+                {/* ============================================================
+                    SECCIÓN: ESTADÍSTICAS
+                    ============================================================ */}
                 <div className="inventario-stats">
                     <div className="stat-item">
                         <span className="stat-icon">📦</span>
@@ -644,7 +740,9 @@ export default function ProductosPanel() {
                     </div>
                 </div>
 
-                {/* Toolbar */}
+                {/* ============================================================
+                    SECCIÓN: TOOLBAR
+                    ============================================================ */}
                 <div className="inventario-toolbar">
                     <div className="nueva-categoria">
                         <input
@@ -661,7 +759,9 @@ export default function ProductosPanel() {
                     </Button>
                 </div>
 
-                {/* Filtros */}
+                {/* ============================================================
+                    SECCIÓN: FILTROS
+                    ============================================================ */}
                 <div className="inventario-filtros">
                     <div className="filtro-busqueda">
                         <span className="filtro-icon">🔍</span>
@@ -703,7 +803,9 @@ export default function ProductosPanel() {
                     </div>
                 </div>
 
-                {/* Lista de categorías y productos */}
+                {/* ============================================================
+                    SECCIÓN: LISTA DE PRODUCTOS
+                    ============================================================ */}
                 <div className="categorias-scroll-container">
                     <div className="categorias-container categorias-lista">
                         {productosFiltrados.length === 0 ? (
@@ -715,6 +817,7 @@ export default function ProductosPanel() {
                         ) : (
                             productosFiltrados.map((categoria) => (
                                 <div key={categoria.id} className="categoria-section">
+                                    {/* Cabecera de categoría */}
                                     <div className="categoria-header">
                                         <h4 className="categoria-titulo">📂 {categoria.nombre}</h4>
                                         <div className="categoria-acciones">
@@ -736,6 +839,7 @@ export default function ProductosPanel() {
                                         </div>
                                     </div>
 
+                                    {/* Productos de la categoría */}
                                     <div className="productos-grid-completo">
                                         {categoria.productos.map((producto) => {
                                             const stockBajo = (producto.stock || 0) <= (producto.stockMinimo || 0);
@@ -743,9 +847,11 @@ export default function ProductosPanel() {
                                                 ((producto.stock || 0) / ((producto.stockMinimo || 1))) * 100, 
                                                 100
                                             );
+                                            const actualizando = actualizandoStockId === producto.id;
                                             
                                             return (
                                                 <div key={producto.id} className={`producto-card-completo ${stockBajo ? 'stock-bajo-card' : ''}`}>
+                                                    {/* Header del producto */}
                                                     <div className="producto-card-header">
                                                         <div className="producto-info-principal">
                                                             <span className="producto-nombre-completo">{producto.nombre}</span>
@@ -769,7 +875,9 @@ export default function ProductosPanel() {
                                                         </div>
                                                     </div>
 
+                                                    {/* Body del producto */}
                                                     <div className="producto-card-body">
+                                                        {/* Precios */}
                                                         <div className="producto-precios">
                                                             <div className="precio-venta">
                                                                 <span className="precio-label">Precio</span>
@@ -787,21 +895,23 @@ export default function ProductosPanel() {
                                                             </div>
                                                         </div>
 
+                                                        {/* Control de stock */}
                                                         <div className="producto-stock-completo">
                                                             <div className="stock-control-completo">
                                                                 <button 
                                                                     className="stock-btn-completo"
                                                                     onClick={() => actualizarStock(categoria.id, producto.id, (producto.stock || 0) - 1)}
-                                                                    disabled={(producto.stock || 0) <= 0}
+                                                                    disabled={(producto.stock || 0) <= 0 || actualizando}
                                                                 >
                                                                     −
                                                                 </button>
                                                                 <span className={`stock-numero ${stockBajo ? 'stock-bajo' : ''}`}>
-                                                                    {producto.stock}
+                                                                    {actualizando ? '…' : producto.stock}
                                                                 </span>
                                                                 <button 
                                                                     className="stock-btn-completo"
                                                                     onClick={() => actualizarStock(categoria.id, producto.id, (producto.stock || 0) + 1)}
+                                                                    disabled={actualizando}
                                                                 >
                                                                     +
                                                                 </button>
@@ -809,12 +919,16 @@ export default function ProductosPanel() {
                                                                     Min: {producto.stockMinimo || 0}
                                                                 </span>
                                                             </div>
+                                                            
+                                                            {/* Barra de stock */}
                                                             <div className="stock-bar-completo-bg">
                                                                 <div 
                                                                     className={`stock-bar-completo ${stockBajo ? 'stock-bar-bajo' : ''}`}
                                                                     style={{ width: `${Math.min(stockPorcentaje, 100)}%` }}
                                                                 />
                                                             </div>
+                                                            
+                                                            {/* Alerta de stock bajo */}
                                                             {stockBajo && (
                                                                 <div className="stock-alerta-completo">
                                                                     ⚠️ ¡Stock crítico! Quedan {producto.stock} unidades
@@ -833,7 +947,9 @@ export default function ProductosPanel() {
                 </div>
             </Card>
 
-            {/* Modal de Producto */}
+            {/* ============================================================
+                MODAL: CREAR/EDITAR PRODUCTO
+                ============================================================ */}
             {modalAbierto && (
                 <div className="modal-overlay" onClick={() => setModalAbierto(false)}>
                     <div className="modal-card modal-producto" onClick={(e) => e.stopPropagation()}>
@@ -854,6 +970,7 @@ export default function ProductosPanel() {
                         </div>
 
                         <div className="modal-form-grid">
+                            {/* Nombre */}
                             <div className="modal-campo modal-campo-full">
                                 <label>
                                     <span className="campo-label">Nombre del producto</span>
@@ -868,6 +985,7 @@ export default function ProductosPanel() {
                                 />
                             </div>
 
+                            {/* Código */}
                             <div className="modal-campo">
                                 <label>
                                     <span className="campo-label">Código</span>
@@ -881,6 +999,7 @@ export default function ProductosPanel() {
                                 />
                             </div>
 
+                            {/* Categoría */}
                             <div className="modal-campo">
                                 <label>
                                     <span className="campo-label">Categoría</span>
@@ -900,6 +1019,7 @@ export default function ProductosPanel() {
                                 </select>
                             </div>
 
+                            {/* Precio */}
                             <div className="modal-campo">
                                 <label>
                                     <span className="campo-label">Precio ($)</span>
@@ -913,6 +1033,7 @@ export default function ProductosPanel() {
                                 />
                             </div>
 
+                            {/* Costo */}
                             <div className="modal-campo">
                                 <label>
                                     <span className="campo-label">Costo ($)</span>
@@ -926,6 +1047,7 @@ export default function ProductosPanel() {
                                 />
                             </div>
 
+                            {/* Stock actual */}
                             <div className="modal-campo">
                                 <label>
                                     <span className="campo-label">Stock actual</span>
@@ -939,6 +1061,7 @@ export default function ProductosPanel() {
                                 />
                             </div>
 
+                            {/* Stock mínimo */}
                             <div className="modal-campo">
                                 <label>
                                     <span className="campo-label">Stock mínimo</span>
@@ -953,6 +1076,7 @@ export default function ProductosPanel() {
                             </div>
                         </div>
 
+                        {/* Botones del modal */}
                         <div className="modal-acciones">
                             <button className="btn-cancelar" onClick={() => setModalAbierto(false)}>
                                 Cancelar

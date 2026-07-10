@@ -1,23 +1,24 @@
 // ============================================
 // ADMIN DASHBOARD - Sistema completo
+// CON CONEXIÓN AL BACKEND
 // ============================================
 import { useState, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom"; // ← IMPORTAR useNavigate
+import { useNavigate } from "react-router-dom";
 import KpiCard from "../../components/admin/KpiCard";
 import ActivityFeed from "../../components/admin/ActivityFeed";
 import QuickActions from "../../components/admin/QuickActions";
 import UsuariosPanel from "./UsuariosPanel";
-import ProductosAdminPanel from "./ProductosAdminPanel";
+import ProductosPanel from "../products/productos";
 import FinanzasPanel from "./FinanzasPanel";
 import TurnosPanel from "./TurnosPanel";
 import EmpleadosPanel from "./EmpleadosPanel";
 import ReportesPanel from "./ReportesPanel";
 import ConfiguracionPanel from "./ConfiguracionPanel";
-import { clientes } from "../../mock/clientes";
-import { empleados, turnos } from "../../mock/empleados";
-import { ingresosMensualidades, ingresosProductos, egresos } from "../../mock/finanzas";
 import { COP, formatDate, calculateDaysBetween } from "../../utils/formatters";
 import useAuthStore from "../../store/authStore";
+import { clientesService } from "../../services/clientesService";
+import { empleadosService } from "../../services/empleadosService";
+import { turnoService } from "../../services/turnoService";
 import "../../styles/adminCSS/index.css";
 
 // Utilidades
@@ -43,9 +44,18 @@ const tabs = [
 export default function AdminDashboard() {
     const [tabActiva, setTabActiva] = useState("dashboard");
     const [lastActivity, setLastActivity] = useState([]);
-    const navigate = useNavigate(); // ← Hook de navegación
+    const [cargando, setCargando] = useState(true);
+    const [datosDashboard, setDatosDashboard] = useState({
+        clientes: [],
+        empleados: [],
+        turnos: [],
+        ingresosMensualidades: [],
+        ingresosProductos: [],
+        egresos: []
+    });
+    const navigate = useNavigate();
 
-    // Verificar autenticación al cargar
+    // Verificar autenticación
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
     const usuario = useAuthStore((state) => state.usuario);
 
@@ -56,6 +66,78 @@ export default function AdminDashboard() {
             navigate("/login", { replace: true });
         }
     }, [isAuthenticated, usuario, navigate]);
+
+    // Cargar datos del dashboard
+    useEffect(() => {
+        const cargarDatos = async () => {
+            if (!isAuthenticated) return;
+            
+            try {
+                setCargando(true);
+                console.log("📊 Cargando datos para el dashboard...");
+                
+                // Cargar clientes
+                let clientesData = [];
+                try {
+                    clientesData = await clientesService.listar();
+                    console.log(`✅ Clientes cargados: ${clientesData.length}`);
+                } catch (e) {
+                    console.error("Error cargando clientes:", e);
+                    clientesData = [];
+                }
+                
+                // Cargar empleados
+                let empleadosData = [];
+                try {
+                    empleadosData = await empleadosService.listar();
+                    console.log(`✅ Empleados cargados: ${empleadosData.length}`);
+                } catch (e) {
+                    console.error("Error cargando empleados:", e);
+                    empleadosData = [];
+                }
+                
+                // Cargar turnos
+                let turnosData = [];
+                try {
+                    turnosData = await turnoService.turnosHoy();
+                    console.log(`✅ Turnos cargados: ${turnosData.length}`);
+                } catch (e) {
+                    console.error("Error cargando turnos:", e);
+                    turnosData = [];
+                }
+                
+                // Cargar finanzas - datos mock por ahora
+                const ingresosMensualidadesData = [
+                    { id: 1, fecha: "2026-07-01", monto: 80000, clienteNombre: "Juan Pérez", tipo: "Mensual", metodoPago: "Efectivo" },
+                    { id: 2, fecha: "2026-07-05", monto: 150000, clienteNombre: "María García", tipo: "Trimestral", metodoPago: "Transferencia" }
+                ];
+                
+                const ingresosProductosData = [
+                    { id: 1, fecha: "2026-07-02", total: 45000, producto: "Proteína Whey", cantidad: 2 }
+                ];
+                
+                const egresosData = [
+                    { id: 1, fecha: "2026-07-03", monto: 120000, concepto: "Pago servicios", categoria: "Servicios" }
+                ];
+                
+                setDatosDashboard({
+                    clientes: clientesData,
+                    empleados: empleadosData,
+                    turnos: turnosData,
+                    ingresosMensualidades: ingresosMensualidadesData,
+                    ingresosProductos: ingresosProductosData,
+                    egresos: egresosData
+                });
+                
+            } catch (error) {
+                console.error("❌ Error cargando datos:", error);
+            } finally {
+                setCargando(false);
+            }
+        };
+        
+        cargarDatos();
+    }, [isAuthenticated]);
 
     // Generar actividad en tiempo real (simulado)
     useEffect(() => {
@@ -70,44 +152,46 @@ export default function AdminDashboard() {
     }, []);
 
     // Stats para KPIs
+    const { clientes, empleados, turnos, ingresosMensualidades, ingresosProductos, egresos } = datosDashboard;
+
     const clientesActivos = useMemo(() =>
-        clientes.filter(c => c.estado === "activo" && c.mensualidad?.activa).length,
-        []);
+        clientes?.filter(c => c.estado === "activo" && c.mensualidad?.activa).length || 0,
+        [clientes]);
 
     const clientesVencidos = useMemo(() =>
-        clientes.filter(c => {
+        clientes?.filter(c => {
             const dias = calcularDiasRestantes(c.mensualidad?.fechaVencimiento);
             return dias < 0 && c.estado === "activo";
-        }).length,
-        []);
+        }).length || 0,
+        [clientes]);
 
     const clientesPorVencer = useMemo(() => {
-        return clientes.filter(c => {
+        return clientes?.filter(c => {
             const dias = calcularDiasRestantes(c.mensualidad?.fechaVencimiento);
             return dias >= 0 && dias <= 3 && c.estado === "activo";
-        }).length;
-    }, []);
+        }).length || 0;
+    }, [clientes]);
 
     const ingresoMes = useMemo(() => {
         const mesActual = hoy.slice(0, 7);
         const mem = ingresosMensualidades
-            .filter(i => i.fecha.startsWith(mesActual))
-            .reduce((a, i) => a + i.monto, 0);
+            ?.filter(i => i.fecha?.startsWith(mesActual))
+            ?.reduce((a, i) => a + (i.monto || 0), 0) || 0;
         const prod = ingresosProductos
-            .filter(i => i.fecha.startsWith(mesActual))
-            .reduce((a, i) => a + i.total, 0);
+            ?.filter(i => i.fecha?.startsWith(mesActual))
+            ?.reduce((a, i) => a + (i.total || 0), 0) || 0;
         return mem + prod;
-    }, []);
+    }, [ingresosMensualidades, ingresosProductos]);
 
     const egresoMes = useMemo(() => {
         const mesActual = hoy.slice(0, 7);
         return egresos
-            .filter(e => e.fecha.startsWith(mesActual))
-            .reduce((a, e) => a + e.monto, 0);
-    }, []);
+            ?.filter(e => e.fecha?.startsWith(mesActual))
+            ?.reduce((a, e) => a + (e.monto || 0), 0) || 0;
+    }, [egresos]);
 
-    const turnoAbierto = turnos.find(t => t.fecha === hoy && !t.cerrado);
-    const totalEmpleados = empleados.filter(e => e.activo).length;
+    const turnoAbierto = turnos?.find(t => t.fecha === hoy && !t.cerrado);
+    const totalEmpleados = empleados?.filter(e => e.activo).length || 0;
 
     // KPIs del dashboard
     const kpis = [
@@ -115,7 +199,7 @@ export default function AdminDashboard() {
             icon: "👥",
             value: clientesActivos,
             label: "Clientes Activos",
-            subtitle: `${clientes.length} total`,
+            subtitle: `${clientes?.length || 0} total`,
             color: "#3b82f6",
             bg: "#eff6ff",
             onClick: () => setTabActiva("usuarios")
@@ -160,7 +244,7 @@ export default function AdminDashboard() {
             icon: "👷",
             value: totalEmpleados,
             label: "Empleados Activos",
-            subtitle: `${empleados.filter(e => e.activo && e.cargo === "Entrenador").length} entrenadores`,
+            subtitle: `${empleados?.filter(e => e.activo && e.cargo === "Entrenador").length || 0} entrenadores`,
             color: "#06b6d4",
             bg: "#ecfeff",
             onClick: () => setTabActiva("empleados")
@@ -198,45 +282,67 @@ export default function AdminDashboard() {
     // Clientes por vencer para mostrar en el dashboard
     const clientesPorVencerLista = useMemo(() => {
         return clientes
-            .filter(c => {
+            ?.filter(c => {
                 const dias = calcularDiasRestantes(c.mensualidad?.fechaVencimiento);
                 return dias >= 0 && dias <= 5 && c.estado === "activo" && c.mensualidad?.activa;
             })
-            .sort((a, b) =>
+            ?.sort((a, b) =>
                 calcularDiasRestantes(a.mensualidad?.fechaVencimiento) -
                 calcularDiasRestantes(b.mensualidad?.fechaVencimiento)
-            );
-    }, []);
+            ) || [];
+    }, [clientes]);
 
     const logout = useAuthStore((state) => state.logout);
 
-    // ============================================
-    // LOGOUT CORREGIDO (igual que en RecepcionDashboard)
-    // ============================================
     const handleLogout = () => {
-        // Confirmar antes de cerrar sesión
         if (!window.confirm("¿Deseas cerrar sesión?")) return;
 
         console.log("=================================");
         console.log("ADMIN DASHBOARD - Cerrando sesión");
         console.log("=================================");
 
-        // 1. Llamar al logout del store
         logout();
-
-        // 2. Redirigir al login
         navigate("/login", { replace: true });
-
-        // 3. Recargar la página para resetear completamente
-        // (esto asegura que todo el estado se limpie)
         window.location.reload();
 
         console.log("✅ Sesión cerrada y redirigido al login");
     };
 
-    // Si no está autenticado, no renderizar nada (el efecto redirigirá)
+    // Si no está autenticado, no renderizar nada
     if (!isAuthenticated || !usuario) {
         return null;
+    }
+
+    // Mostrar loading
+    if (cargando) {
+        return (
+            <div className="exec-dashboard">
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    height: '100vh',
+                    flexDirection: 'column',
+                    gap: '20px'
+                }}>
+                    <div style={{
+                        width: '50px',
+                        height: '50px',
+                        border: '5px solid #f3f3f3',
+                        borderTop: '5px solid #3b82f6',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                    }}></div>
+                    <p style={{ color: '#6b7280' }}>Cargando panel de control...</p>
+                    <style>{`
+                        @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                        }
+                    `}</style>
+                </div>
+            </div>
+        );
     }
 
     // Renderizar contenido según tab
@@ -245,16 +351,13 @@ export default function AdminDashboard() {
             case "dashboard":
                 return (
                     <div className="dashboard-content">
-                        {/* KPIs */}
                         <div className="kpis-grid">
                             {kpis.map((k, i) => (
                                 <KpiCard key={i} {...k} />
                             ))}
                         </div>
 
-                        {/* Sección inferior */}
                         <div className="dashboard-grid">
-                            {/* Actividad Reciente */}
                             <div className="dashboard-card">
                                 <div className="card-header">
                                     <h3>🕐 Actividad Reciente</h3>
@@ -263,7 +366,6 @@ export default function AdminDashboard() {
                                 <ActivityFeed activities={lastActivity} />
                             </div>
 
-                            {/* Acciones Rápidas */}
                             <div className="dashboard-card">
                                 <div className="card-header">
                                     <h3>⚡ Acciones Rápidas</h3>
@@ -271,7 +373,6 @@ export default function AdminDashboard() {
                                 <QuickActions actions={quickActions} />
                             </div>
 
-                            {/* Próximos a Vencer */}
                             <div className="dashboard-card">
                                 <div className="card-header">
                                     <h3>⚠️ Próximos a Vencer</h3>
@@ -314,7 +415,7 @@ export default function AdminDashboard() {
             case "empleados":
                 return <EmpleadosPanel />;
             case "productos":
-                return <ProductosAdminPanel />;
+                return <ProductosPanel />;
             case "finanzas":
                 return <FinanzasPanel />;
             case "turnos":
@@ -330,7 +431,6 @@ export default function AdminDashboard() {
 
     return (
         <div className="exec-dashboard">
-            {/* Header */}
             <header className="exec-header">
                 <div className="exec-header-left">
                     <h1 className="exec-title">🏢 Panel de Control</h1>
@@ -354,7 +454,6 @@ export default function AdminDashboard() {
                 </div>
             </header>
 
-            {/* Tabs */}
             <nav className="exec-tabs">
                 {tabs.map(tab => (
                     <button
@@ -368,7 +467,6 @@ export default function AdminDashboard() {
                 ))}
             </nav>
 
-            {/* Content */}
             <main className="exec-content">
                 {renderContent()}
             </main>

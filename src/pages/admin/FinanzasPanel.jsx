@@ -1,18 +1,19 @@
 // ============================================
-// FINANZAS PANEL - Ingresos, egresos, nómina
+// FINANZAS PANEL - Con conexión al backend
 // ============================================
-import { useState, useMemo } from "react";
-import { ingresosMensualidades, ingresosProductos, egresos, preciosMembresia } from "../../mock/finanzas";
-import { empleados } from "../../mock/empleados";
+import { useState, useMemo, useEffect } from "react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-
-const COP = (v) => "$" + Math.round(v || 0).toLocaleString("es-CO");
+import { COP, formatDate } from "../../utils/formatters";
+import { clientesService } from "../../services/clientesService";
+import { empleadosService } from "../../services/empleadosService";
+import useAuthStore from "../../store/authStore";
 
 const hoy = new Date().toISOString().split("T")[0];
 const mesActual = hoy.slice(0, 7);
 
 const diasHastaFecha = (fechaStr) => {
+    if (!fechaStr) return 0;
     const fecha = new Date(fechaStr);
     const ahora = new Date();
     ahora.setHours(0, 0, 0, 0);
@@ -20,76 +21,144 @@ const diasHastaFecha = (fechaStr) => {
 };
 
 export default function FinanzasPanel() {
-    const [seccion, setSeccion] = useState("resumen"); // resumen | nomina | movimientos
-    const [ingresos_mem, setIngresosMem] = useState(ingresosMensualidades);
-    const [ingresos_prod, setIngresosProd] = useState(ingresosProductos);
-    const [egresosList, setEgresosList] = useState(egresos);
-    const [empleadosList] = useState(empleados);
+    const [seccion, setSeccion] = useState("resumen");
+    const [clientes, setClientes] = useState([]);
+    const [empleados, setEmpleados] = useState([]);
+    const [cargando, setCargando] = useState(true);
     const [modalEgreso, setModalEgreso] = useState(false);
-    const [formEgreso, setFormEgreso] = useState({ concepto: "", monto: "", categoria: "Servicios", fecha: hoy });
+    const [formEgreso, setFormEgreso] = useState({ 
+        concepto: "", 
+        monto: "", 
+        categoria: "Servicios", 
+        fecha: hoy 
+    });
+    const [egresosList, setEgresosList] = useState([]);
 
-    // Totales del mes
+    const usuario = useAuthStore((state) => state.usuario);
+
+    // Cargar datos
+    useEffect(() => {
+        cargarDatos();
+    }, []);
+
+    const cargarDatos = async () => {
+        setCargando(true);
+        try {
+            // Cargar clientes para obtener info de membresías
+            const clientesData = await clientesService.listar();
+            setClientes(clientesData);
+
+            // Cargar empleados
+            const empleadosData = await empleadosService.listar();
+            setEmpleados(empleadosData);
+
+            // Cargar egresos desde localStorage (temporal)
+            const egresosGuardados = JSON.parse(localStorage.getItem('egresos') || '[]');
+            setEgresosList(egresosGuardados);
+
+        } catch (error) {
+            console.error("❌ Error cargando datos financieros:", error);
+        } finally {
+            setCargando(false);
+        }
+    };
+
+    // Calcular ingresos del mes desde clientes
+    const ingresosMensualidades = useMemo(() => {
+        const mes = mesActual;
+        const ingresos = clientes
+            .filter(c => c.mensualidad?.activa && c.fechaIngreso?.startsWith(mes))
+            .map(c => ({
+                id: c.id,
+                fecha: c.fechaIngreso,
+                monto: c.mensualidad?.precioMensual || 80000,
+                clienteNombre: c.nombre,
+                tipo: c.mensualidad?.tipo || "Mensual",
+                metodoPago: "Efectivo"
+            }));
+        return ingresos;
+    }, [clientes]);
+
     const totalIngresosMem = useMemo(() =>
-        ingresos_mem.filter(i => i.fecha.startsWith(mesActual)).reduce((a, i) => a + i.monto, 0),
-        [ingresos_mem]);
+        ingresosMensualidades.reduce((a, i) => a + i.monto, 0),
+        [ingresosMensualidades]);
+
+    // Ingresos por productos (mock)
+    const ingresosProductos = useMemo(() => [
+        { id: 1, fecha: hoy, total: 45000, producto: "Proteína Whey", cantidad: 2 },
+        { id: 2, fecha: hoy, total: 32000, producto: "Creatina", cantidad: 1 }
+    ], []);
 
     const totalIngresosProd = useMemo(() =>
-        ingresos_prod.filter(i => i.fecha.startsWith(mesActual)).reduce((a, i) => a + i.total, 0),
-        [ingresos_prod]);
+        ingresosProductos.reduce((a, i) => a + i.total, 0),
+        [ingresosProductos]);
 
     const totalIngresos = totalIngresosMem + totalIngresosProd;
 
     const totalEgresos = useMemo(() =>
-        egresosList.filter(e => e.fecha.startsWith(mesActual)).reduce((a, e) => a + e.monto, 0),
+        egresosList.filter(e => e.fecha?.startsWith(mesActual)).reduce((a, e) => a + (e.monto || 0), 0),
         [egresosList]);
 
     const utilidad = totalIngresos - totalEgresos;
 
-    // Nómina: cuánto apartar por día
+    // Cálculo de nómina
     const calcularAhorroDiario = (empleado) => {
         const diasPeriodo = empleado.frecuenciaPago === "QUINCENAL" ? 15 : 30;
-        return Math.round(empleado.salario / diasPeriodo);
+        return Math.round((empleado.salario || 0) / diasPeriodo);
     };
 
     const calcularAcumulado = (empleado) => {
-        const ultimoPago = new Date(empleado.ultimoPago);
+        const ultimoPago = empleado.ultimoPago ? new Date(empleado.ultimoPago) : new Date();
         const hoyDate = new Date();
         const diasTranscurridos = Math.ceil((hoyDate - ultimoPago) / (1000 * 60 * 60 * 24));
         const ahorroDiario = calcularAhorroDiario(empleado);
-        return Math.min(ahorroDiario * diasTranscurridos, empleado.salario);
+        return Math.min(ahorroDiario * Math.max(0, diasTranscurridos), empleado.salario || 0);
     };
 
-    const totalNominaProxima = empleadosList
+    const totalNominaProxima = empleados
         .filter(e => e.activo)
-        .reduce((a, e) => a + e.salario, 0);
+        .reduce((a, e) => a + (e.salario || 0), 0);
 
-    const totalAhorradoHoy = empleadosList
+    const totalAhorradoHoy = empleados
         .filter(e => e.activo)
         .reduce((a, e) => a + calcularAcumulado(e), 0);
 
     // Guardar egreso
     const guardarEgreso = () => {
-        if (!formEgreso.concepto.trim() || !formEgreso.monto) return;
-        setEgresosList([...egresosList, {
+        if (!formEgreso.concepto.trim() || !formEgreso.monto) {
+            alert("❌ Completa todos los campos");
+            return;
+        }
+
+        const nuevoEgreso = {
             id: Date.now(),
             concepto: formEgreso.concepto,
             monto: parseInt(formEgreso.monto),
             fecha: formEgreso.fecha,
             categoria: formEgreso.categoria,
             empleadoId: null,
-        }]);
+        };
+
+        const nuevosEgresos = [...egresosList, nuevoEgreso];
+        setEgresosList(nuevosEgresos);
+        localStorage.setItem('egresos', JSON.stringify(nuevosEgresos));
+        
         setModalEgreso(false);
         setFormEgreso({ concepto: "", monto: "", categoria: "Servicios", fecha: hoy });
+        alert("✅ Egreso registrado correctamente");
     };
+
+    if (cargando) {
+        return <div style={{ textAlign: 'center', padding: '40px' }}>Cargando datos financieros...</div>;
+    }
 
     return (
         <div className="finanzas-container">
-            {/* Secciones */}
             <div className="finanzas-tabs">
                 {[
-                    { id: "resumen", label: "📊 Resumen", },
-                    { id: "nomina", label: "👷 Nómina", },
-                    { id: "movimientos", label: "📋 Movimientos", },
+                    { id: "resumen", label: "📊 Resumen" },
+                    { id: "nomina", label: "👷 Nómina" },
+                    { id: "movimientos", label: "📋 Movimientos" },
                 ].map(s => (
                     <button
                         key={s.id}
@@ -104,7 +173,6 @@ export default function FinanzasPanel() {
             {/* RESUMEN */}
             {seccion === "resumen" && (
                 <div className="finanzas-resumen">
-                    {/* Cards principales */}
                     <div className="finanzas-cards">
                         <div className="fin-card fin-green">
                             <span className="fin-card-icon">💰</span>
@@ -150,28 +218,28 @@ export default function FinanzasPanel() {
                         </div>
                     </div>
 
-                    {/* Desglose ingresos del mes */}
                     <div className="finanzas-row">
                         <Card title="Membresías del mes" icon="🏋️" className="fin-desglose-card">
                             <div className="fin-lista">
-                                {ingresos_mem.filter(i => i.fecha.startsWith(mesActual)).map(i => (
-                                    <div key={i.id} className="fin-item">
-                                        <div>
-                                            <span className="fin-item-nombre">{i.clienteNombre}</span>
-                                            <span className="fin-item-sub">{i.tipo} · {i.fecha} · {i.metodoPago}</span>
-                                        </div>
-                                        <span className="fin-item-monto green">{COP(i.monto)}</span>
-                                    </div>
-                                ))}
-                                {ingresos_mem.filter(i => i.fecha.startsWith(mesActual)).length === 0 && (
+                                {ingresosMensualidades.length === 0 ? (
                                     <p className="fin-vacio">Sin ingresos por membresías este mes</p>
+                                ) : (
+                                    ingresosMensualidades.map(i => (
+                                        <div key={i.id} className="fin-item">
+                                            <div>
+                                                <span className="fin-item-nombre">{i.clienteNombre}</span>
+                                                <span className="fin-item-sub">{i.tipo} · {i.fecha}</span>
+                                            </div>
+                                            <span className="fin-item-monto green">{COP(i.monto)}</span>
+                                        </div>
+                                    ))
                                 )}
                             </div>
                         </Card>
 
                         <Card title="Ventas de productos" icon="🛍️" className="fin-desglose-card">
                             <div className="fin-lista">
-                                {ingresos_prod.filter(i => i.fecha.startsWith(mesActual)).map(i => (
+                                {ingresosProductos.map(i => (
                                     <div key={i.id} className="fin-item">
                                         <div>
                                             <span className="fin-item-nombre">{i.producto}</span>
@@ -180,9 +248,6 @@ export default function FinanzasPanel() {
                                         <span className="fin-item-monto green">{COP(i.total)}</span>
                                     </div>
                                 ))}
-                                {ingresos_prod.filter(i => i.fecha.startsWith(mesActual)).length === 0 && (
-                                    <p className="fin-vacio">Sin ventas de productos este mes</p>
-                                )}
                             </div>
                         </Card>
                     </div>
@@ -192,11 +257,10 @@ export default function FinanzasPanel() {
             {/* NÓMINA */}
             {seccion === "nomina" && (
                 <div className="nomina-container">
-                    {/* Cards resumen nómina */}
                     <div className="nomina-cards">
                         <div className="nom-card">
                             <span className="nom-icon">👷</span>
-                            <span className="nom-valor">{empleadosList.filter(e => e.activo).length}</span>
+                            <span className="nom-valor">{empleados.filter(e => e.activo).length}</span>
                             <span className="nom-label">Empleados activos</span>
                         </div>
                         <div className="nom-card">
@@ -209,14 +273,8 @@ export default function FinanzasPanel() {
                             <span className="nom-valor">{COP(totalAhorradoHoy)}</span>
                             <span className="nom-label">Acumulado hasta hoy</span>
                         </div>
-                        <div className="nom-card">
-                            <span className="nom-icon">📅</span>
-                            <span className="nom-valor">{COP(empleadosList.filter(e => e.activo).reduce((a, e) => a + calcularAhorroDiario(e), 0))}</span>
-                            <span className="nom-label">Apartar hoy</span>
-                        </div>
                     </div>
 
-                    {/* Tabla de empleados */}
                     <Card title="Estado de Nómina" icon="👷" className="nomina-card">
                         <div className="tabla-scroll">
                             <table className="usuarios-tabla">
@@ -230,21 +288,19 @@ export default function FinanzasPanel() {
                                         <th>Próximo pago</th>
                                         <th>Días restantes</th>
                                         <th>Acumulado</th>
-                                        <th>Apartar/día</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {empleadosList.filter(e => e.activo).map(e => {
+                                    {empleados.filter(e => e.activo).map(e => {
                                         const diasRestantes = diasHastaFecha(e.proximoPago);
                                         const acumulado = calcularAcumulado(e);
-                                        const ahorroDiario = calcularAhorroDiario(e);
-                                        const porcentaje = Math.min((acumulado / e.salario) * 100, 100);
+                                        const porcentaje = Math.min((acumulado / (e.salario || 1)) * 100, 100);
                                         return (
                                             <tr key={e.id}>
                                                 <td>
                                                     <div className="cliente-nombre-cell">
                                                         <span className="cliente-avatar avatar-purple">
-                                                            {e.nombre.charAt(0)}
+                                                            {e.nombre?.charAt(0) || "?"}
                                                         </span>
                                                         <span>{e.nombre}</span>
                                                     </div>
@@ -252,8 +308,8 @@ export default function FinanzasPanel() {
                                                 <td><span className="cargo-badge">{e.cargo}</span></td>
                                                 <td className="text-green fw-bold">{COP(e.salario)}</td>
                                                 <td><span className="membresia-badge">{e.frecuenciaPago === "QUINCENAL" ? "Quincenal" : "Mensual"}</span></td>
-                                                <td className="text-small">{e.ultimoPago}</td>
-                                                <td className="text-small">{e.proximoPago}</td>
+                                                <td className="text-small">{formatDate(e.ultimoPago)}</td>
+                                                <td className="text-small">{formatDate(e.proximoPago)}</td>
                                                 <td>
                                                     <span className={`estado-badge ${diasRestantes <= 3 ? "badge-red" : diasRestantes <= 7 ? "badge-yellow" : "badge-green"}`}>
                                                         {diasRestantes === 0 ? "¡Hoy!" : `${diasRestantes}d`}
@@ -263,11 +319,10 @@ export default function FinanzasPanel() {
                                                     <div className="nomina-progreso">
                                                         <span className="text-green">{COP(acumulado)}</span>
                                                         <div className="progreso-bar-bg">
-                                                            <div className="progreso-bar" style={{ width: `${porcentaje}%` }} />
+                                                            <div className="progreso-bar" style={{ width: `${Math.min(porcentaje, 100)}%` }} />
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="text-blue fw-bold">{COP(ahorroDiario)}</td>
                                             </tr>
                                         );
                                     })}
@@ -289,19 +344,17 @@ export default function FinanzasPanel() {
                     </div>
 
                     <div className="movimientos-lista">
-                        {/* Ingresos membresías */}
-                        {ingresos_mem.filter(i => i.fecha.startsWith(mesActual)).map(i => (
+                        {ingresosMensualidades.map(i => (
                             <div key={`mem-${i.id}`} className="movimiento-item movimiento-ingreso">
                                 <span className="mov-icon">💰</span>
                                 <div className="mov-info">
                                     <span className="mov-concepto">{i.clienteNombre} — Membresía {i.tipo}</span>
-                                    <span className="mov-sub">{i.fecha} · {i.metodoPago}</span>
+                                    <span className="mov-sub">{i.fecha}</span>
                                 </div>
                                 <span className="mov-monto text-green">+{COP(i.monto)}</span>
                             </div>
                         ))}
-                        {/* Ingresos productos */}
-                        {ingresos_prod.filter(i => i.fecha.startsWith(mesActual)).map(i => (
+                        {ingresosProductos.map(i => (
                             <div key={`prod-${i.id}`} className="movimiento-item movimiento-ingreso">
                                 <span className="mov-icon">🛍️</span>
                                 <div className="mov-info">
@@ -311,8 +364,7 @@ export default function FinanzasPanel() {
                                 <span className="mov-monto text-green">+{COP(i.total)}</span>
                             </div>
                         ))}
-                        {/* Egresos */}
-                        {egresosList.filter(e => e.fecha.startsWith(mesActual)).map(e => (
+                        {egresosList.filter(e => e.fecha?.startsWith(mesActual)).map(e => (
                             <div key={`eg-${e.id}`} className="movimiento-item movimiento-egreso">
                                 <span className="mov-icon">📉</span>
                                 <div className="mov-info">

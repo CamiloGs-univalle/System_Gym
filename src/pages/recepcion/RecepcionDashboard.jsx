@@ -3,11 +3,11 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import { VentasProvider } from "../../store/ventasStore";
-import ClientesPanel from "./ClientesPanel";
+import ClientesPanel from "../clients/ClientesPanel";
 import POSPanel from "./POSPanel";
-import ProductosPanel from "./ProductosPanel";
 import CierrePanel from "./Cierrepanel";
 import "../../styles/recepcionCSS/index.css";
+import ProductosPanel from "../products/productos";
 
 const NAV = [
   { id: "general", label: "General" },

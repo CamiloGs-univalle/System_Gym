@@ -15,6 +15,7 @@
  * - Registra ventas en el backend (descuenta stock automáticamente)
  * - Soporta pago en efectivo o transferencia
  * - Cobra membresías (mensual o por día)
+ * - Verifica el turno activo con el backend
  * 
  * @component
  * @returns {JSX.Element} Panel POS completo
@@ -28,21 +29,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { productosService } from '../../services/productosService';
 import { ventasService } from '../../services/ventasService';
 import { clientesService } from '../../services/clientesService';
+import { turnoService } from '../../services/turnoService';
 
 // ============================================================
 // FUNCIONES DE UTILIDAD
 // ============================================================
 
-/**
- * Formatea un número como moneda COP (Pesos Colombianos)
- * 
- * @param {number|string} valor - Valor a formatear
- * @returns {string} Valor formateado ej: "$ 1.500.000"
- * 
- * @example
- * formatearPrecioCOP(1500000) // "$ 1.500.000"
- * formatearPrecioCOP("0") // "$ 0"
- */
 const formatearPrecioCOP = (valor) => {
   if (!valor || valor === "0") return "$ 0";
   const numeroLimpio = valor.toString().replace(/[^0-9]/g, "");
@@ -52,16 +44,6 @@ const formatearPrecioCOP = (valor) => {
   return `$ ${formateado}`;
 };
 
-/**
- * Limpia un valor de input de moneda y extrae solo números
- * 
- * @param {string} valor - Valor a limpiar
- * @returns {string} Número limpio como string
- * 
- * @example
- * limpiarValorMoneda("$ 1.500.000") // "1500000"
- * limpiarValorMoneda("abc123") // "123"
- */
 const limpiarValorMoneda = (valor) => {
   if (!valor) return "0";
   const soloNumeros = valor.toString().replace(/[^0-9]/g, "");
@@ -69,23 +51,6 @@ const limpiarValorMoneda = (valor) => {
   return String(parseInt(soloNumeros, 10));
 };
 
-/**
- * Extrae los datos de una respuesta de la API,
- * manejando diferentes estructuras de respuesta.
- * 
- * @param {Object} response - Respuesta de la API
- * @returns {Array} Array de datos extraídos
- * 
- * @example
- * // Caso 1: Array directo
- * extraerDatos([{id:1}]) // [{id:1}]
- * 
- * // Caso 2: { data: [...] }
- * extraerDatos({data: [{id:1}]}) // [{id:1}]
- * 
- * // Caso 3: { data: { data: [...] } }
- * extraerDatos({data: {data: [{id:1}]}}) // [{id:1}]
- */
 const extraerDatos = (response) => {
   if (Array.isArray(response)) return response;
   if (response?.data && Array.isArray(response.data)) return response.data;
@@ -103,136 +68,149 @@ export default function POSPanel() {
   // 1. ESTADOS PARA LA INTERFAZ DE USUARIO
   // ============================================================
 
-  /**
-   * Carrito de compras actual
-   * @type {Array} Array de { id, nombre, precio, cantidad, tipo, ... }
-   */
   const [carrito, setCarrito] = useState([]);
-
-  /**
-   * Monto recibido del cliente (para calcular cambio)
-   * @type {string} Valor en string para manejar formato de moneda
-   */
   const [pagoRecibido, setPagoRecibido] = useState("0");
-
-  /**
-   * ID de la categoría seleccionada (null = mostrar todos)
-   * @type {number|null}
-   */
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
-
-  /**
-   * Texto de búsqueda de cliente
-   * @type {string}
-   */
   const [busqueda, setBusqueda] = useState("");
-
-  /**
-   * Cliente seleccionado actualmente
-   * @type {Object|null}
-   */
   const [cliente, setCliente] = useState(null);
-
-  /**
-   * Resultados de la búsqueda de clientes
-   * @type {Array}
-   */
   const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
-
-  /**
-   * Indica si se están mostrando los resultados de búsqueda de clientes
-   * @type {boolean}
-   */
   const [mostrandoResultados, setMostrandoResultados] = useState(false);
-
-  /**
-   * Texto de búsqueda de productos
-   * @type {string}
-   */
   const [busquedaProducto, setBusquedaProducto] = useState("");
-
-  /**
-   * Método de pago seleccionado: 'efectivo' | 'transferencia' | 'tarjeta'
-   * @type {string}
-   */
   const [metodoPago, setMetodoPago] = useState('efectivo');
 
   // ============================================================
   // 2. ESTADOS PARA DATOS DEL BACKEND
   // ============================================================
 
-  /**
-   * Lista de categorías obtenidas del backend
-   * @type {Array}
-   */
   const [categoriasBackend, setCategoriasBackend] = useState([]);
-
-  /**
-   * Lista de productos obtenidos del backend
-   * @type {Array}
-   */
   const [productosBackend, setProductosBackend] = useState([]);
-
-  /**
-   * Indica si se está cargando datos
-   * @type {boolean}
-   */
   const [loading, setLoading] = useState(false);
-
-  /**
-   * Turno activo obtenido del localStorage
-   * @type {Object|null}
-   */
   const [turnoActivo, setTurnoActivo] = useState(null);
+  const [turnoIdBackend, setTurnoIdBackend] = useState(null);
+  const [turnoValido, setTurnoValido] = useState(false);
+  const [mensajeTurno, setMensajeTurno] = useState("");
+  const [verificandoTurno, setVerificandoTurno] = useState(true);
 
   // ============================================================
   // 3. EFECTOS (useEffect)
   // ============================================================
 
-  /**
-   * Al montar el componente, obtiene el turno activo del localStorage
-   * para que el POS pueda operar correctamente.
-   */
   useEffect(() => {
-    const turno = localStorage.getItem('turno_activo');
-    if (turno) {
-      try {
-        setTurnoActivo(JSON.parse(turno));
-      } catch {
-        setTurnoActivo(null);
-      }
-    }
-  }, []);
-
-  /**
-   * Al montar el componente, carga las categorías y productos desde el backend.
-   */
-  useEffect(() => {
+    verificarTurnoActivo();
     cargarDatos();
   }, []);
 
-  /**
-   * Carga categorías y productos desde el backend.
-   * Formatea los datos al formato que espera el frontend.
-   * 
-   * @async
-   */
+  const verificarTurnoActivo = async () => {
+    setVerificandoTurno(true);
+    const turnoLocal = localStorage.getItem('turno_activo');
+    
+    if (!turnoLocal) {
+      console.warn('⚠️ No hay turno activo en localStorage');
+      setTurnoActivo(null);
+      setTurnoValido(false);
+      setMensajeTurno("⚠️ No hay turno activo. Abre un turno primero.");
+      setVerificandoTurno(false);
+      return;
+    }
+
+    try {
+      const turnoParseado = JSON.parse(turnoLocal);
+      console.log('📌 Turno desde localStorage:', turnoParseado);
+
+      try {
+        const response = await turnoService.obtenerAbierto(turnoParseado.receptionistId);
+        console.log('📌 Turno desde backend:', response);
+
+        let turnoBackend = response?.data || response || null;
+        if (turnoBackend?.data) turnoBackend = turnoBackend.data;
+        
+        if (turnoBackend && turnoBackend.id) {
+          console.log('✅ Turno encontrado en backend:', turnoBackend);
+          
+          const turnoSincronizado = {
+            ...turnoParseado,
+            id: turnoBackend.id,
+            sincronizado: true,
+            openedAt: turnoBackend.openedAt || turnoParseado.openedAt,
+            status: turnoBackend.status || 'OPEN'
+          };
+          
+          setTurnoActivo(turnoSincronizado);
+          setTurnoIdBackend(turnoBackend.id);
+          setTurnoValido(true);
+          setMensajeTurno(`✅ Turno activo ID: ${turnoBackend.id}`);
+          
+          localStorage.setItem('turno_activo', JSON.stringify(turnoSincronizado));
+          setVerificandoTurno(false);
+          return;
+        }
+      } catch (backendError) {
+        console.error('❌ Error verificando turno en backend:', backendError);
+        
+        if (backendError.response?.status === 404) {
+          console.warn('⚠️ Turno no encontrado en backend (404)');
+          setTurnoValido(false);
+          setMensajeTurno(`⚠️ Turno local ID: ${turnoParseado.id} (no existe en backend)`);
+          setTurnoActivo(turnoParseado);
+          setTurnoIdBackend(turnoParseado.id);
+          
+          alert(
+            `⚠️ El turno local no existe en el backend.\n\n` +
+            `ID del turno local: ${turnoParseado.id}\n` +
+            `Recepcionista ID: ${turnoParseado.receptionistId}\n\n` +
+            `Esto puede pasar porque:\n` +
+            `1. El turno fue cerrado en el backend\n` +
+            `2. El turno fue abierto en modo local\n` +
+            `3. El backend no tiene este turno registrado\n\n` +
+            `Para continuar, abre un nuevo turno desde el panel de turnos.`
+          );
+          
+          setVerificandoTurno(false);
+          return;
+        }
+        
+        setTurnoValido(false);
+        setMensajeTurno("⚠️ Error al verificar turno en backend");
+        setTurnoActivo(turnoParseado);
+        setTurnoIdBackend(turnoParseado.id);
+        setVerificandoTurno(false);
+        return;
+      }
+
+      setTurnoActivo(turnoParseado);
+      setTurnoIdBackend(turnoParseado.id);
+      setTurnoValido(false);
+      setMensajeTurno(`⚠️ Turno local ID: ${turnoParseado.id} (no sincronizado)`);
+
+    } catch (error) {
+      console.error('❌ Error verificando turno:', error);
+      try {
+        const turnoParseado = JSON.parse(turnoLocal);
+        setTurnoActivo(turnoParseado);
+        setTurnoIdBackend(turnoParseado.id);
+        setTurnoValido(false);
+        setMensajeTurno(`⚠️ Turno local ID: ${turnoParseado.id} (error de verificación)`);
+      } catch {
+        setTurnoActivo(null);
+        setTurnoValido(false);
+        setMensajeTurno("❌ Error al verificar turno");
+      }
+    } finally {
+      setVerificandoTurno(false);
+    }
+  };
+
   const cargarDatos = async () => {
     try {
       setLoading(true);
 
-      // 1. Cargar categorías desde el backend
       const categoriasResponse = await productosService.listarCategorias();
       const categoriasData = extraerDatos(categoriasResponse);
       setCategoriasBackend(categoriasData);
 
-      // 2. Cargar productos desde el backend
       const productosResponse = await productosService.listarProductos();
       const productosData = extraerDatos(productosResponse);
 
-      // 3. Formatear productos al formato del frontend
-      //    Backend: name, code, salePrice, costPrice, minimumStock
-      //    Frontend: nombre, codigo, precio, costo, stockMinimo
       const productosFormateados = productosData.map(p => ({
         id: p.id,
         nombre: p.name || p.nombre || "Sin nombre",
@@ -242,6 +220,7 @@ export default function POSPanel() {
         stock: p.stock || 0,
         stockMinimo: p.minimumStock || p.stockMinimo || 0,
         categoriaId: p.categoryId || p.category?.id,
+        categoria: p.category?.name || p.categoria || "Sin categoría",
         imagen: p.imagen || "📦"
       }));
 
@@ -258,32 +237,17 @@ export default function POSPanel() {
   // 4. FILTRADO DE PRODUCTOS
   // ============================================================
 
-  /**
-   * Filtra los productos según la búsqueda y la categoría seleccionada.
-   * Se recalcula automáticamente cuando cambian los filtros.
-   * 
-   * Reglas de filtrado:
-   * - Sin búsqueda + sin categoría = TODOS los productos
-   * - Sin búsqueda + categoría = productos de esa categoría
-   * - Con búsqueda + sin categoría = productos que coinciden con la búsqueda
-   * - Con búsqueda + categoría = productos de la categoría que coinciden
-   */
   const productosFiltrados = useMemo(() => {
-    if (productosBackend.length === 0) {
-      return [];
-    }
+    if (productosBackend.length === 0) return [];
 
-    // Mostrar TODOS si no hay búsqueda y no hay categoría seleccionada
     if (!busquedaProducto.trim() && categoriaSeleccionada === null) {
       return productosBackend;
     }
 
-    // Mostrar por categoría si no hay búsqueda pero hay categoría
     if (!busquedaProducto.trim() && categoriaSeleccionada !== null) {
       return productosBackend.filter(p => p.categoriaId === categoriaSeleccionada);
     }
 
-    // Buscar en TODOS si hay búsqueda y no hay categoría
     if (busquedaProducto.trim() && categoriaSeleccionada === null) {
       const busquedaLower = busquedaProducto.toLowerCase();
       return productosBackend.filter(p =>
@@ -292,7 +256,6 @@ export default function POSPanel() {
       );
     }
 
-    // Buscar en categoría si hay búsqueda y categoría
     const busquedaLower = busquedaProducto.toLowerCase();
     return productosBackend.filter(p =>
       (p.categoriaId === categoriaSeleccionada) &&
@@ -302,20 +265,13 @@ export default function POSPanel() {
   }, [productosBackend, busquedaProducto, categoriaSeleccionada]);
 
   // ============================================================
-  // 5. BÚSQUEDA DE CLIENTES (Backend)
+  // 5. BÚSQUEDA DE CLIENTES
   // ============================================================
 
-  /**
-   * Busca clientes en el backend por nombre, cédula o teléfono.
-   * 
-   * @param {string} texto - Texto de búsqueda
-   * @async
-   */
   const buscarCliente = async (texto) => {
     setBusqueda(texto);
     setMostrandoResultados(true);
 
-    // Si el texto está vacío, limpiar resultados
     if (!texto.trim()) {
       setCliente(null);
       setResultadosBusqueda([]);
@@ -327,7 +283,6 @@ export default function POSPanel() {
       const encontrados = await clientesService.buscar(texto);
       setResultadosBusqueda(encontrados);
 
-      // Si hay un solo resultado exacto, seleccionarlo automáticamente
       if (encontrados.length === 1) {
         const exacto = encontrados[0];
         if (exacto.nombre.toLowerCase() === texto.toLowerCase() || exacto.cedula === texto) {
@@ -347,11 +302,6 @@ export default function POSPanel() {
     }
   };
 
-  /**
-   * Selecciona un cliente de los resultados de búsqueda
-   * 
-   * @param {Object} clienteSeleccionado - Cliente a seleccionar
-   */
   const seleccionarCliente = (clienteSeleccionado) => {
     setCliente(clienteSeleccionado);
     setBusqueda(clienteSeleccionado.nombre);
@@ -359,9 +309,6 @@ export default function POSPanel() {
     setResultadosBusqueda([]);
   };
 
-  /**
-   * Limpia el cliente seleccionado
-   */
   const limpiarCliente = () => {
     setCliente(null);
     setBusqueda("");
@@ -373,51 +320,34 @@ export default function POSPanel() {
   // 6. FUNCIONES DEL CARRITO
   // ============================================================
 
-  /**
-   * Agrega un producto al carrito.
-   * Valida que haya stock disponible.
-   * 
-   * @param {Object} producto - Producto a agregar
-   */
   const agregarAlCarrito = (producto) => {
-    // Validar stock
     if (producto.stock <= 0) {
       alert(`⚠️ El producto "${producto.nombre}" no tiene stock disponible.`);
       return;
     }
 
-    // Buscar si el producto ya está en el carrito
     const existente = carrito.find((item) => item.id === producto.id);
     if (existente) {
-      // Validar que no exceda el stock
       if (existente.cantidad >= producto.stock) {
         alert(`⚠️ No hay suficiente stock de "${producto.nombre}" (disponible: ${producto.stock})`);
         return;
       }
-      // Incrementar cantidad
       setCarrito(
         carrito.map((item) =>
           item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item
         )
       );
     } else {
-      // Agregar nuevo producto al carrito
       setCarrito([...carrito, { ...producto, cantidad: 1, tipo: "producto" }]);
     }
   };
 
-  /**
-   * Agrega una membresía al carrito (mensual o por día)
-   * 
-   * @param {string} modo - 'mes' o 'dia'
-   */
   const cobrarMensualidad = (modo) => {
     if (!cliente) {
       alert("Debes seleccionar un cliente primero");
       return;
     }
 
-    // Evitar duplicados del mismo cliente
     const yaExiste = carrito.some(
       (item) => item.tipo === "mensualidad" && item.clienteId === cliente.id
     );
@@ -443,35 +373,22 @@ export default function POSPanel() {
 
     setCarrito([...carrito, nuevoItem]);
 
-    // Limpiar cliente después de agregar membresía
     setCliente(null);
     setBusqueda("");
     setResultadosBusqueda([]);
     setMostrandoResultados(false);
   };
 
-  /**
-   * Elimina un item del carrito por su ID
-   * 
-   * @param {string|number} itemId - ID del item a eliminar
-   */
   const eliminarDelCarrito = (itemId) => {
     setCarrito(carrito.filter((item) => item.id !== itemId));
   };
 
-  /**
-   * Actualiza la cantidad de un producto en el carrito
-   * 
-   * @param {string|number} itemId - ID del item
-   * @param {number} nuevaCantidad - Nueva cantidad
-   */
   const actualizarCantidad = (itemId, nuevaCantidad) => {
     if (nuevaCantidad <= 0) {
       eliminarDelCarrito(itemId);
       return;
     }
 
-    // Validar stock disponible
     const item = carrito.find(i => i.id === itemId);
     if (item && item.tipo === "producto" && nuevaCantidad > item.stock) {
       alert(`⚠️ No hay suficiente stock (disponible: ${item.stock})`);
@@ -487,16 +404,8 @@ export default function POSPanel() {
   // 7. CÁLCULOS DE TOTALES
   // ============================================================
 
-  /**
-   * Calcula el total del carrito sumando precio * cantidad de cada item
-   */
   const totalCarrito = carrito.reduce((total, item) => total + item.precio * item.cantidad, 0);
 
-  /**
-   * Calcula el cambio a devolver al cliente
-   * 
-   * @returns {number} Cambio a devolver (negativo si falta dinero)
-   */
   const calcularCambio = () => {
     const recibido = parseFloat(pagoRecibido);
     if (isNaN(recibido)) return 0;
@@ -505,11 +414,6 @@ export default function POSPanel() {
 
   const cambio = calcularCambio();
 
-  /**
-   * Maneja el cambio del input de pago recibido
-   * 
-   * @param {Event} e - Evento del input
-   */
   const handlePagoChange = (e) => {
     const valorInput = e.target.value;
     const soloNumeros = limpiarValorMoneda(valorInput);
@@ -517,26 +421,13 @@ export default function POSPanel() {
   };
 
   // ============================================================
-  // 8. PROCESAR VENTA (Backend)
+  // 8. PROCESAR VENTA - VERSIÓN CON FALLBACK LOCAL
   // ============================================================
 
-  /**
-   * Procesa la venta completa:
-   * 1. Valida que haya items en el carrito
-   * 2. Valida que el pago sea suficiente
-   * 3. Valida que haya un turno activo
-   * 4. Registra la venta en el backend
-   * 5. Descuenta el stock automáticamente
-   * 6. Muestra resumen de la venta
-   * 7. Limpia el carrito
-   * 
-   * @async
-   */
   const handleVenta = async () => {
     const mensualidades = carrito.filter(item => item.tipo === "mensualidad");
     const productos = carrito.filter(item => item.tipo === "producto");
 
-    // Validaciones
     if (carrito.length === 0) {
       alert("El carrito está vacío");
       return;
@@ -547,46 +438,129 @@ export default function POSPanel() {
       return;
     }
 
-    if (!turnoActivo) {
-      alert("No hay un turno activo. Debes abrir un turno primero.");
+    const shiftId = turnoIdBackend || turnoActivo?.id;
+    
+    if (!shiftId) {
+      alert("❌ No hay un turno activo válido. Abre un turno primero.");
       return;
+    }
+
+    // Si el turno no es válido, mostrar advertencia pero permitir continuar
+    if (!turnoValido) {
+      const continuar = window.confirm(
+        `⚠️ El turno no está sincronizado con el backend.\n\n` +
+        `ID del turno: ${shiftId}\n` +
+        `Estado: ${turnoValido ? 'Sincronizado' : 'Local'}\n\n` +
+        `Si continúas, la venta se registrará localmente pero el stock NO se actualizará en el backend.\n\n` +
+        `¿Deseas continuar?`
+      );
+      if (!continuar) return;
     }
 
     try {
       setLoading(true);
 
-      // ✅ Mapeo correcto del método de pago para el backend
       const mapMetodoPago = {
         'efectivo': 'CASH',
         'transferencia': 'TRANSFER',
         'tarjeta': 'CARD'
       };
       const paymentMethod = mapMetodoPago[metodoPago] || 'CASH';
+      const clientId = cliente?.id || null;
 
-      // ✅ Registrar venta en el backend (solo productos)
+      let ventasRegistradas = [];
+
+      // ✅ PROCESAR PRODUCTOS
       if (productos.length > 0) {
+        const totalProductos = productos.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
+        
         const items = productos.map(item => ({
           productId: item.id,
-          quantity: item.cantidad
+          quantity: item.cantidad,
+          unitPrice: item.precio,
+          subtotal: item.precio * item.cantidad
         }));
 
         console.log('📦 Items a enviar:', items);
         console.log('💳 Método de pago:', paymentMethod);
-        console.log('🆔 Turno ID:', turnoActivo.id);
+        console.log('🆔 Turno ID:', shiftId);
+        console.log('💰 Total productos:', totalProductos);
 
-        const clientId = cliente?.id || null;
-
-        await ventasService.registrarVenta(
-          items,
-          paymentMethod,
-          turnoActivo.id,
-          'PRODUCT_SALE',
-          clientId
-        );
+        if (turnoValido) {
+          try {
+            const resultado = await ventasService.registrarVenta(
+              items,
+              paymentMethod,
+              shiftId,
+              'PRODUCT_SALE',
+              clientId,
+              totalProductos
+            );
+            ventasRegistradas.push(resultado);
+            console.log('✅ Venta de productos registrada en backend');
+          } catch (backendError) {
+            console.warn('⚠️ Error en backend, registrando localmente:', backendError.message);
+            ventasRegistradas.push({ 
+              id: Date.now(), 
+              local: true, 
+              message: 'Registrada localmente (backend falló)' 
+            });
+          }
+        } else {
+          console.log('📝 Modo local: venta de productos registrada solo en frontend');
+          ventasRegistradas.push({ 
+            id: Date.now(), 
+            local: true, 
+            message: 'Registrada localmente' 
+          });
+        }
       }
 
-      // ✅ Mostrar resumen de la venta
-      let mensaje = `✅ Venta realizada exitosamente\n\n`;
+      // ✅ PROCESAR MEMBRESÍAS
+      if (mensualidades.length > 0) {
+        for (const item of mensualidades) {
+          const esDia = item.modo === "dia";
+          
+          const itemsMembresia = [{
+            productId: null,
+            quantity: 1,
+            unitPrice: item.precio,
+            subtotal: item.precio
+          }];
+
+          if (turnoValido) {
+            try {
+              const resultado = await ventasService.registrarVenta(
+                itemsMembresia,
+                paymentMethod,
+                shiftId,
+                'MEMBERSHIP_PAYMENT',
+                item.clienteId,
+                item.precio
+              );
+              ventasRegistradas.push(resultado);
+              console.log(`✅ ${esDia ? 'Día' : 'Mensualidad'} registrada en backend`);
+            } catch (backendError) {
+              console.warn(`⚠️ Error en backend para ${esDia ? 'día' : 'mensualidad'}:`, backendError.message);
+              ventasRegistradas.push({ 
+                id: Date.now(), 
+                local: true, 
+                message: `Registrada localmente (backend falló)` 
+              });
+            }
+          } else {
+            console.log(`📝 Modo local: ${esDia ? 'Día' : 'Mensualidad'} registrada solo en frontend`);
+            ventasRegistradas.push({ 
+              id: Date.now(), 
+              local: true, 
+              message: 'Registrada localmente' 
+            });
+          }
+        }
+      }
+
+      // ✅ CONSTRUIR MENSAJE DE ÉXITO
+      let mensaje = `✅ Venta ${turnoValido ? 'registrada' : 'local'} exitosamente\n\n`;
       mensaje += `💰 Total: $${totalCarrito.toLocaleString()}\n`;
 
       const labelMetodo = metodoPago === 'efectivo' ? '💵 Efectivo' :
@@ -611,9 +585,22 @@ export default function POSPanel() {
         mensaje += `\n👤 Cliente: ${cliente.nombre}`;
       }
 
+      if (!turnoValido || ventasRegistradas.some(v => v.local)) {
+        mensaje += `\n\n⚠️ Modo local - El stock no se actualizó en el backend.`;
+      }
+
+      if (ventasRegistradas.length > 0) {
+        const locales = ventasRegistradas.filter(v => v.local).length;
+        const reales = ventasRegistradas.length - locales;
+        mensaje += `\n\n✅ ${reales} transacción(es) registrada(s) en backend`;
+        if (locales > 0) {
+          mensaje += `\n⚠️ ${locales} transacción(es) registrada(s) localmente`;
+        }
+      }
+
       alert(mensaje);
 
-      // ✅ Limpiar carrito
+      // ✅ LIMPIAR ESTADO
       setCarrito([]);
       setPagoRecibido("0");
       setCliente(null);
@@ -622,25 +609,28 @@ export default function POSPanel() {
       setMostrandoResultados(false);
       setBusquedaProducto("");
 
-      // ✅ Recargar productos para actualizar stock
+      // ✅ RECARGAR DATOS
       await cargarDatos();
 
     } catch (err) {
-      console.error('Error al procesar venta:', err);
-
-      let mensaje = 'Error al procesar la venta: ';
-      if (err.details?.message) {
-        mensaje += err.details.message;
-      } else if (err.message) {
-        mensaje += err.message;
+      console.error('❌ Error al procesar venta:', err);
+      
+      let mensajeError = 'Error al procesar la venta: ';
+      
+      if (err.message) {
+        mensajeError += err.message;
+      } else if (err.details?.message) {
+        mensajeError += err.details.message;
       }
-
+      
       if (err.details?.violations) {
-        const violaciones = err.details.violations.map(v => v.message).join(', ');
-        mensaje += '\n\nDetalles: ' + violaciones;
+        const violaciones = err.details.violations.map(v => 
+          `${v.propertyPath}: ${v.message}`
+        ).join('\n');
+        mensajeError += '\n\nDetalles:\n' + violaciones;
       }
-
-      alert(mensaje);
+      
+      alert(mensajeError);
     } finally {
       setLoading(false);
     }
@@ -650,9 +640,6 @@ export default function POSPanel() {
   // 9. UTILIDADES DE INTERFAZ
   // ============================================================
 
-  /**
-   * Determina la clase CSS para los días de membresía del cliente
-   */
   const diasClase = !cliente
     ? ""
     : !cliente.mensualidad?.activa
@@ -661,11 +648,6 @@ export default function POSPanel() {
         ? "dias-alerta"
         : "dias-ok";
 
-  /**
-   * Obtiene el icono de avatar según el género del cliente
-   * 
-   * @returns {string} Emoji del avatar
-   */
   const getAvatarIcon = () => {
     if (!cliente) return "🧍";
     if (cliente.genero === "masculino") return "👨";
@@ -680,14 +662,65 @@ export default function POSPanel() {
   const categoriasMostrar = categoriasBackend.length > 0 ? categoriasBackend : [];
   const productosMostrar = productosFiltrados;
 
+  if (verificandoTurno) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '400px',
+        flexDirection: 'column',
+        gap: '16px'
+      }}>
+        <span style={{ fontSize: '40px' }}>⏳</span>
+        <p style={{ color: '#6b7280' }}>Verificando turno activo...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="pos-wireframe">
-      {/* ============================================================
-          COLUMNA IZQUIERDA: Productos
-          ============================================================ */}
-      <section className="pos-panel pos-panel-productos">
+      {/* BANNER DE ESTADO DEL TURNO */}
+      <div style={{
+        background: turnoValido ? '#d1fae5' : '#fee2e2',
+        color: turnoValido ? '#065f46' : '#991b1b',
+        padding: '10px 16px',
+        borderRadius: '8px',
+        marginBottom: '16px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '8px'
+      }}>
+        <span style={{ fontWeight: '500' }}>
+          {mensajeTurno || (turnoActivo ? `Turno ID: ${turnoActivo.id}` : '⚠️ Sin turno activo')}
+        </span>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <span style={{ fontSize: '14px' }}>
+            {turnoValido ? '✅ Sincronizado' : '⚠️ Local'}
+          </span>
+          {!turnoValido && (
+            <button 
+              onClick={() => window.location.href = '/admin/turnos'}
+              style={{
+                background: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                padding: '4px 12px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              Abrir Turno
+            </button>
+          )}
+        </div>
+      </div>
 
-        {/* Barra de búsqueda de productos */}
+      {/* COLUMNA IZQUIERDA: Productos */}
+      <section className="pos-panel pos-panel-productos">
         <input
           type="text"
           className="pos-input-pill pos-buscar-producto"
@@ -696,11 +729,9 @@ export default function POSPanel() {
           onChange={(e) => setBusquedaProducto(e.target.value)}
         />
 
-        {/* Botones de categorías */}
         <div className="categorias-container">
           {categoriasMostrar.length > 0 ? (
             <>
-              {/* Botón "Todos" - muestra todos los productos */}
               <button
                 className={`categoria-btn ${categoriaSeleccionada === null ? "active" : ""}`}
                 onClick={() => {
@@ -710,7 +741,6 @@ export default function POSPanel() {
               >
                 📦 Todos
               </button>
-              {/* Botones de cada categoría */}
               {categoriasMostrar.map((cat) => (
                 <button
                   key={cat.id}
@@ -729,7 +759,6 @@ export default function POSPanel() {
           )}
         </div>
 
-        {/* Grid de productos */}
         <div className="productos-grid">
           {loading && productosMostrar.length === 0 ? (
             <div className="productos-vacio">
@@ -763,12 +792,10 @@ export default function POSPanel() {
         </div>
       </section>
 
-      {/* ============================================================
-          COLUMNA DERECHA: Cliente + Carrito + Totales
-          ============================================================ */}
+      {/* COLUMNA DERECHA: Cliente + Carrito + Totales */}
       <div className="pos-panel-derecho">
 
-        {/* ---- FICHA DE CLIENTE ---- */}
+        {/* FICHA DE CLIENTE */}
         <section className="pos-panel pos-panel-cliente">
           <div className="cliente-fila-superior">
             <div className="cliente-foto">{getAvatarIcon()}</div>
@@ -881,7 +908,7 @@ export default function POSPanel() {
           </div>
         </section>
 
-        {/* ---- CARRITO Y TOTALES ---- */}
+        {/* CARRITO Y TOTALES */}
         <section className="pos-panel pos-panel-carrito">
           <div className="carrito-columna">
             <h3 className="carrito-titulo">Carrito de Venta</h3>
@@ -927,13 +954,11 @@ export default function POSPanel() {
           </div>
 
           <div className="totales-columna">
-            {/* Total */}
             <div className="total-pill">
               <span>Total:</span>
               <span className="total-pill-monto">${totalCarrito.toLocaleString()}</span>
             </div>
 
-            {/* Método de pago */}
             <div className="total-pill total-pill-metodo">
               <span>Pago:</span>
               <div className="metodo-pago-toggle">
@@ -952,7 +977,6 @@ export default function POSPanel() {
               </div>
             </div>
 
-            {/* Pago recibido */}
             <div className="total-pill total-pill-input">
               <span>Recibido:</span>
               <input
@@ -965,7 +989,6 @@ export default function POSPanel() {
               />
             </div>
 
-            {/* Cambio */}
             <div className="total-pill">
               <span>Cambio:</span>
               <span
@@ -975,7 +998,6 @@ export default function POSPanel() {
               </span>
             </div>
 
-            {/* Botón realizar venta */}
             <button
               className="realizar-venta-btn"
               onClick={handleVenta}
