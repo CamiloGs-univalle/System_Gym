@@ -1,339 +1,175 @@
-// src/services/clientesService.js
-// Bloque 1 - Gestión de usuarios/clientes. Endpoints: GET/POST /api/clients
-
 import api from './api';
 
-// ============================================
-// MAPEO DE CAMPOS: Frontend → Backend
-// ============================================
-// Frontend         →  Backend (Client)
-// nombre           →  fullName
-// cedula           →  dni
-// telefono         →  phoneNumber
-// membresia        →  membershipType (mensual→MONTHLY, trimestral→QUARTERLY, anual→ANNUAL)
-// precioMensual    →  amountPaid (monto pagado)
-// entrenador       →  assignedTrainerId (ID del entrenador)
-// ============================================
-
-// ============================================
-// DATOS MOCK PARA FALLBACK
-// ============================================
-const MOCK_CLIENTES = [
-    {
-        id: 1,
-        fullName: "Cliente de Prueba 1",
-        dni: "123456789",
-        phoneNumber: "3001234567",
-        enrollmentDate: "2026-07-01",
-        membershipType: "MONTHLY",
-        active: true
-    },
-    {
-        id: 2,
-        fullName: "Cliente de Prueba 2",
-        dni: "987654321",
-        phoneNumber: "3007654321",
-        enrollmentDate: "2026-07-02",
-        membershipType: "MONTHLY",
-        active: true
-    }
-];
-
-// ============================================
-// FUNCIONES DE MAPEO
-// ============================================
-
-/**
- * Mapea el tipo de membresía del frontend al formato del backend
- */
-const mapMembershipType = (tipo) => {
-    const map = {
-        'mensual': 'MONTHLY',
-        'trimestral': 'QUARTERLY',
-        'anual': 'ANNUAL',
-        'MONTHLY': 'MONTHLY',
-        'QUARTERLY': 'QUARTERLY',
-        'ANNUAL': 'ANNUAL'
-    };
-    return map[tipo?.toLowerCase()] || 'MONTHLY';
-};
-
-/**
- * Convierte datos del frontend al formato del backend
- */
-const toBackendFormat = (data) => {
-    const membershipType = mapMembershipType(data.membresia);
-    const amountPaid = parseFloat(data.precioMensual) || 80000;
-    
-    let assignedTrainerId = null;
-    if (data.entrenador && data.entrenador !== 'No asignado') {
-        assignedTrainerId = data.entrenadorId || null;
-    }
-    
-    return {
-        fullName: data.nombre ? data.nombre.trim() : '',
-        dni: data.cedula ? data.cedula.replace(/\D/g, '') : '',
-        phoneNumber: data.telefono ? data.telefono.replace(/\D/g, '') : null,
-        membershipType: membershipType,
-        amountPaid: amountPaid,
-        assignedTrainerId: assignedTrainerId
-    };
-};
-
-/**
- * Convierte datos del backend al formato del frontend
- */
 const toFrontendFormat = (data) => {
-    const mapMembershipBack = (tipo) => {
-        const map = {
-            'MONTHLY': 'mensual',
-            'QUARTERLY': 'trimestral',
-            'ANNUAL': 'anual'
-        };
-        return map[tipo] || 'mensual';
-    };
-    
-    let diasRestantes = 0;
-    if (data.membershipExpirationDate) {
-        const hoy = new Date();
-        const expiracion = new Date(data.membershipExpirationDate);
-        const diffTime = expiracion - hoy;
-        diasRestantes = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-    }
-    
-    return {
-        id: data.id,
-        nombre: data.fullName || data.nombre || '',
-        cedula: data.dni || data.cedula || '',
-        telefono: data.phoneNumber || data.telefono || '',
-        email: data.email || '',
-        fechaRegistro: data.enrollmentDate || data.fechaRegistro || new Date().toISOString().split('T')[0],
-        entrenador: data.assignedTrainerName || data.entrenador || 'No asignado',
-        entrenadorId: data.assignedTrainerId || null,
-        notas: data.notes || data.notas || '',
-        membresia: mapMembershipBack(data.membershipType || data.membresia),
-        ultimoPago: data.lastPaymentDate || data.ultimoPago || '',
-        proximoPago: data.nextPaymentDate || data.proximoPago || '',
-        estadoManual: null,
-        mensualidad: {
-            activa: data.active !== false || diasRestantes > 0,
-            diasRestantes: diasRestantes,
-            precioMensual: data.monthlyPrice || data.precioMensual || 0,
-            precioDia: data.dailyPrice || data.precioDia || 0
-        },
-        active: data.active !== false,
-        _raw: data
-    };
+  if (!data) return null;
+  const mem = data.currentMembership || data.current_membership || null;
+  const hoy = new Date();
+  let diasRestantes = 0;
+  let estadoMembresia = 'NINGUNA';
+  if (mem?.expirationDate || mem?.expiration_date) {
+    const exp = new Date(mem.expirationDate || mem.expiration_date);
+    diasRestantes = Math.max(0, Math.ceil((exp - hoy) / 86400000));
+    if (diasRestantes > 5) estadoMembresia = 'ACTIVA';
+    else if (diasRestantes > 0) estadoMembresia = 'POR_VENCER';
+    else estadoMembresia = 'VENCIDA';
+  }
+
+  return {
+    id: data.id,
+    nombre: data.fullName || data.nombre || '',
+    cedula: data.dni || data.cedula || '',
+    telefono: data.phoneNumber || data.telefono || '',
+    email: data.email || '',
+    fechaRegistro: data.enrollmentDate || data.fecha_registro || '',
+    entrenadorId: data.assignedTrainerId || data.entrenadorId || null,
+    entrenador: data.assignedTrainerName || data.entrenador || 'No asignado',
+    notas: data.notes || data.notas || '',
+    activo: data.active !== false,
+    membresia: mem ? {
+      tipo: mem.type || mem.tipo || '',
+      fechaInicio: mem.startDate || mem.fecha_inicio || '',
+      fechaVencimiento: mem.expirationDate || mem.fecha_vencimiento || '',
+      montoPagado: mem.amountPaid || mem.monto_pagado || 0,
+      estado: estadoMembresia,
+      diasRestantes
+    } : null,
+    _raw: data
+  };
 };
 
-// ============================================
-// SERVICIO
-// ============================================
+// Acepta los nombres en español y en inglés que usan los formularios
+export const mapMembresia = (tipo) => {
+  const map = {
+    mensual: 'MONTHLY', monthly: 'MONTHLY',
+    trimestral: 'QUARTERLY', quarterly: 'QUARTERLY',
+    semestral: 'SEMIANNUAL', semiannual: 'SEMIANNUAL',
+    anual: 'ANNUAL', annual: 'ANNUAL',
+    diario: 'DAILY', daily: 'DAILY', dia: 'DAILY', 'día': 'DAILY',
+  };
+  const texto = String(tipo || '').toLowerCase().trim();
+  if (map[texto]) return map[texto];
+  // Formato "30 días", "90 dias", etc.
+  const dias = parseInt(texto, 10);
+  const porDias = { 1: 'DAILY', 30: 'MONTHLY', 90: 'QUARTERLY', 180: 'SEMIANNUAL', 365: 'ANNUAL' };
+  return porDias[dias] || 'MONTHLY';
+};
+
+const toBackendFormat = (data) => {
+  const monto = parseFloat(data.precioMensual) || 0;
+  // Solo se cobra membresía si se eligió un plan con precio: nunca un valor por defecto
+  const cobra = (Boolean(data.planId) || data.cobrarMembresia === true) && monto > 0;
+  return {
+    fullName: (data.nombre || '').trim(),
+    dni: (data.cedula || '').replace(/\D/g, ''),
+    phoneNumber: data.telefono ? data.telefono.replace(/\D/g, '') : null,
+    membershipType: cobra ? mapMembresia(data.membresia) : null,
+    amountPaid: cobra ? monto : 0,
+    paymentMethod: data.metodoPago || 'CASH',
+    cashReceived: 0,
+    shiftId: data.shiftId || null,
+    assignedTrainerId: data.entrenadorId || null,
+    active: data.activo !== false
+  };
+};
 
 export const clientesService = {
-    /**
-     * Listar todos los clientes
-     * GET /api/clients
-     */
-    async listar() {
-        try {
-            console.log("📥 Listando clientes...");
-            const response = await api.get('/clients');
-            
-            let data = response.data || response;
-            
-            if (data.data && Array.isArray(data.data)) {
-                data = data.data;
-            }
-            
-            if (!Array.isArray(data)) {
-                const possibleArrays = Object.values(data).filter(v => Array.isArray(v));
-                if (possibleArrays.length > 0) {
-                    data = possibleArrays[0];
-                } else {
-                    data = [];
-                }
-            }
-            
-            const mappedData = data.map(toFrontendFormat);
-            console.log(`✅ Clientes mapeados: ${mappedData.length}`);
-            return mappedData;
-            
-        } catch (error) {
-            console.error("❌ Error al listar clientes:", error);
-            
-            // 🔥 FALLBACK: Usar datos mock si el backend falla
-            if (error.response?.status === 500) {
-                console.warn("⚠️ El backend está fallando. Usando datos mock.");
-                console.warn("ℹ️ Los clientes se guardarán pero no persistirán hasta que el backend funcione.");
-                
-                // Devolver datos mock para que la UI funcione
-                return MOCK_CLIENTES.map(toFrontendFormat);
-            }
-            throw error;
-        }
-    },
+  async listar({ incluirInactivos = false } = {}) {
+    try {
+      const response = await api.get('/clients', { params: incluirInactivos ? { includeInactive: true } : {} });
+      let data = response.data;
+      if (data?.data && Array.isArray(data.data)) data = data.data;
+      else if (!Array.isArray(data)) data = [];
+      return data.map(toFrontendFormat).filter(Boolean);
+    } catch (error) {
+      console.error("Error listar clientes:", error);
+      return [];
+    }
+  },
 
-    /**
-     * Buscar clientes por término
-     * GET /api/clients/search?term={term}
-     */
-    async buscar(term) {
-        try {
-            console.log(`🔍 Buscando clientes con término: ${term}`);
-            const response = await api.get('/clients/search', { params: { term } });
-            const data = response.data || response;
-            
-            if (Array.isArray(data)) {
-                return data.map(toFrontendFormat);
-            }
-            if (data.data && Array.isArray(data.data)) {
-                return data.data.map(toFrontendFormat);
-            }
-            return [];
-        } catch (error) {
-            console.error("❌ Error al buscar clientes:", error);
-            // Fallback: filtrar en mock
-            if (term) {
-                return MOCK_CLIENTES
-                    .filter(c => c.fullName.toLowerCase().includes(term.toLowerCase()) || 
-                                c.dni.includes(term))
-                    .map(toFrontendFormat);
-            }
-            return [];
-        }
-    },
+  async buscar(term) {
+    try {
+      const response = await api.get('/clients/search', { params: { term } });
+      let data = response.data;
+      if (Array.isArray(data)) return data.map(toFrontendFormat).filter(Boolean);
+      if (data?.data && Array.isArray(data.data)) return data.data.map(toFrontendFormat).filter(Boolean);
+      return [];
+    } catch (error) {
+      console.error("Error buscar clientes:", error);
+      return [];
+    }
+  },
 
-    /**
-     * Obtener un cliente por ID
-     * GET /api/clients/{id}
-     */
-    async obtenerPorId(id) {
-        try {
-            console.log(`📥 Obteniendo cliente ${id}...`);
-            const response = await api.get(`/clients/${id}`);
-            const data = response.data || response;
-            return toFrontendFormat(data);
-        } catch (error) {
-            console.error(`❌ Error al obtener cliente ${id}:`, error);
-            // Fallback: buscar en mock
-            const mock = MOCK_CLIENTES.find(c => c.id === id);
-            if (mock) return toFrontendFormat(mock);
-            throw error;
-        }
-    },
+  async obtenerPorId(id) {
+    try {
+      const response = await api.get(`/clients/${id}`);
+      const data = response.data?.data || response.data;
+      return toFrontendFormat(data);
+    } catch (error) {
+      console.error(`Error obtener cliente ${id}:`, error);
+      throw error;
+    }
+  },
 
-    /**
-     * Crear un nuevo cliente
-     * POST /api/clients
-     */
-    async crear(datos) {
-        try {
-            const payload = toBackendFormat(datos);
-            console.log("📝 Creando cliente (payload):", JSON.stringify(payload, null, 2));
-            
-            const response = await api.post('/clients', payload);
-            console.log("✅ Cliente creado:", response);
-            
-            const data = response.data?.data || response.data || response;
-            const mappedData = toFrontendFormat(data);
-            
-            // Agregar a mock local para que aparezca inmediatamente
-            MOCK_CLIENTES.push({
-                id: data.id || Date.now(),
-                fullName: payload.fullName,
-                dni: payload.dni,
-                phoneNumber: payload.phoneNumber,
-                enrollmentDate: new Date().toISOString().split('T')[0],
-                membershipType: payload.membershipType,
-                active: true
-            });
-            
-            return mappedData;
-        } catch (error) {
-            console.error("❌ Error al crear cliente:", error);
-            
-            if (error.response) {
-                console.error("📋 Status:", error.response.status);
-                console.error("📋 Data:", error.response.data);
-                
-                let errorMessage = "Error al crear cliente";
-                const responseData = error.response.data;
-                
-                if (responseData) {
-                    if (responseData.message) errorMessage = responseData.message;
-                    if (responseData.details) errorMessage += `: ${responseData.details}`;
-                    if (responseData.error) errorMessage = responseData.error;
-                }
-                
-                throw new Error(errorMessage);
-            }
-            throw error;
-        }
-    },
+  async crear(datos) {
+    try {
+      const payload = toBackendFormat(datos);
+      const response = await api.post('/clients', payload);
+      const data = response.data?.data || response.data;
+      return toFrontendFormat(data);
+    } catch (error) {
+      if (error.response) {
+        const status = error.response.status;
+        const msg = error.response.data?.message || error.response.data?.error || '';
+        if (status === 409) throw new Error('Ya existe un cliente con esta cedula');
+        if (status === 400) throw new Error(msg || 'Datos invalidos');
+      }
+      throw error;
+    }
+  },
 
-    /**
-     * Actualizar un cliente existente
-     * PUT /api/clients/{id}
-     */
-    async actualizar(id, datos) {
-        try {
-            const payload = toBackendFormat(datos);
-            console.log(`🔄 Actualizando cliente ${id}:`, JSON.stringify(payload, null, 2));
-            
-            const response = await api.put(`/clients/${id}`, payload);
-            console.log("✅ Cliente actualizado:", response);
-            
-            const data = response.data?.data || response.data || response;
-            return toFrontendFormat(data);
-        } catch (error) {
-            console.error(`❌ Error al actualizar cliente ${id}:`, error);
-            throw error;
-        }
-    },
+  async actualizar(id, datos) {
+    try {
+      const payload = toBackendFormat(datos);
+      const response = await api.put(`/clients/${id}`, payload);
+      const data = response.data?.data || response.data;
+      return toFrontendFormat(data);
+    } catch (error) {
+      console.error(`Error actualizar cliente ${id}:`, error);
+      throw error;
+    }
+  },
 
-    /**
-     * Renovar membresía de un cliente
-     * POST /api/clients/{id}/membership
-     */
-    async renovarMembresia(id, datosMembresia) {
-        try {
-            console.log(`🔄 Renovando membresía del cliente ${id}...`);
-            
-            const payload = {
-                membershipType: mapMembershipType(datosMembresia.tipo || 'mensual'),
-                amountPaid: parseFloat(datosMembresia.monto) || 80000,
-                paymentMethod: datosMembresia.metodoPago || 'CASH',
-                cashReceived: parseFloat(datosMembresia.efectivoRecibido) || 0,
-                shiftId: datosMembresia.shiftId,
-                processedByUserId: datosMembresia.processedByUserId
-            };
-            
-            const response = await api.post(`/clients/${id}/membership`, payload);
-            console.log("✅ Membresía renovada:", response);
-            
-            return response.data?.data || response.data || response;
-        } catch (error) {
-            console.error(`❌ Error al renovar membresía del cliente ${id}:`, error);
-            throw error;
-        }
-    },
+  async renovarMembresia(id, datosMembresia) {
+    try {
+      const monto = parseFloat(datosMembresia.monto);
+      if (!(monto > 0)) {
+        throw new Error('Indique el valor cobrado por la membresía.');
+      }
+      const payload = {
+        membershipType: mapMembresia(datosMembresia.tipo || 'mensual'),
+        amountPaid: monto,
+        paymentMethod: datosMembresia.metodoPago || 'CASH',
+        cashReceived: parseFloat(datosMembresia.efectivoRecibido) || 0,
+        shiftId: datosMembresia.shiftId,
+        processedByUserId: datosMembresia.processedByUserId
+      };
+      const response = await api.post(`/clients/${id}/membership`, payload);
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error(`Error renovar membresia cliente ${id}:`, error);
+      throw error;
+    }
+  },
 
-    /**
-     * Desactivar un cliente
-     * PATCH /api/clients/{id}/deactivate
-     */
-    async desactivar(id) {
-        try {
-            console.log(`🔄 Desactivando cliente ${id}...`);
-            const response = await api.patch(`/clients/${id}/deactivate`);
-            console.log("✅ Cliente desactivado:", response);
-            return response.data?.data || response.data || response;
-        } catch (error) {
-            console.error(`❌ Error al desactivar cliente ${id}:`, error);
-            throw error;
-        }
-    },
+  async desactivar(id) {
+    try {
+      await api.delete(`/clients/${id}`);
+      return true;
+    } catch (error) {
+      console.error(`Error desactivar cliente ${id}:`, error);
+      throw error;
+    }
+  }
 };
 
 export default clientesService;

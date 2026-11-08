@@ -165,6 +165,58 @@
     50% { opacity: 0.4; transform: scale(0.8); }
 }
 
+/* Tarjeta de usuario en el header */
+.exec-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    background: #f8fafc;
+    border: 1px solid var(--exec-border);
+    border-radius: 12px;
+    transition: var(--exec-transition);
+}
+
+.exec-user:hover {
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+}
+
+.exec-user-avatar {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    border-radius: 50%;
+    color: white;
+    flex-shrink: 0;
+}
+
+.exec-user-info {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+}
+
+.exec-user-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--exec-primary);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.exec-user-role {
+    font-size: 11px;
+    color: var(--exec-gray);
+    text-transform: capitalize;
+}
+
 /* ============================================================
    4. TABS - Navegación Interactiva (Fija)
    ============================================================ */
@@ -278,8 +330,7 @@
 .exec-content {
     flex: 1; /* Ocupa todo el espacio restante */
     overflow-y: auto; /* Scroll vertical */
-    padding: 16px 6px 20px 0;
-    margin-right: -6px;
+    padding: 22px 10px 24px;
     animation: contentFadeIn 0.5s ease 0.2s both;
 }
 

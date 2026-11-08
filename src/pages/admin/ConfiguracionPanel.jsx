@@ -1,3 +1,4 @@
+import { guardarSincronizado } from '../../services/storageSync';
 // ============================================================
 // ARCHIVO: src/pages/admin/ConfiguracionPanel.jsx
 // DESCRIPCIÓN: Panel de configuración del sistema
@@ -7,7 +8,8 @@
 import { useState, useEffect } from "react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-import { formatDate } from "../../utils/formatters";
+import { formatDate, formatCurrencyInput } from "../../utils/formatters";
+import RespaldosCard from "../../components/system/RespaldosCard";
 
 // ============================================================
 // CONSTANTES
@@ -15,11 +17,12 @@ import { formatDate } from "../../utils/formatters";
 const DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
 const CONFIG_DEFAULT = {
-    nombreGimnasio: "GYM SYSTEM",
-    nit: "900.123.456-7",
-    direccion: "Calle 123 #45-67, Bogotá",
-    telefono: "601 123 4567",
-    email: "info@gymsystem.com",
+    // Datos reales del gimnasio: se llenan en Configuración (no se inventan)
+    nombreGimnasio: "",
+    nit: "",
+    direccion: "",
+    telefono: "",
+    email: "",
     horarioApertura: "05:00",
     horarioCierre: "22:00",
     diasLaborales: ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
@@ -148,8 +151,8 @@ export default function ConfiguracionPanel() {
 
         try {
             // Guardar en localStorage
-            localStorage.setItem('gym_configuracion', JSON.stringify(form));
-            localStorage.setItem('gym_membresias', JSON.stringify(membresias));
+            guardarSincronizado('gym_configuracion', form);
+            guardarSincronizado('gym_membresias', membresias);
 
             setConfiguracion(JSON.parse(JSON.stringify(form)));
             setEditando(false);
@@ -261,9 +264,10 @@ export default function ConfiguracionPanel() {
                         <div style={{ display: "flex", alignItems: "center" }}>
                             <span style={{ color: "#6b7280", marginRight: "4px" }}>$</span>
                             <input 
-                                type="number" 
-                                value={m.precio || 0}
-                                onChange={(e) => handlePrecioMembresia(m.id, e.target.value)}
+                                type="text"
+                                inputMode="numeric"
+                                value={formatCurrencyInput(m.precio)}
+                                onChange={(e) => handlePrecioMembresia(m.id, e.target.value.replace(/[^0-9]/g, ''))}
                                 disabled={!editando}
                                 style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
                             />
@@ -544,6 +548,9 @@ export default function ConfiguracionPanel() {
                     )}
                 </div>
             </div>
+
+            {/* Respaldos automáticos de la base de datos */}
+            <RespaldosCard />
 
             {/* Body */}
             <div style={{ display: "flex", gap: "16px", flex: 1, overflow: "hidden" }}>

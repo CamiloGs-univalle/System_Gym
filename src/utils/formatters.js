@@ -7,9 +7,19 @@ export const COP = (v) => {
     return "$" + Math.round(v).toLocaleString("es-CO");
 };
 
+// Las fechas "AAAA-MM-DD" se leen como fecha local. new Date("2026-11-14") las toma
+// como medianoche UTC y en Colombia (UTC-5) mostraba el día anterior.
+const parseFecha = (dateStr) => {
+    if (typeof dateStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        return new Date(y, m - 1, d);
+    }
+    return new Date(dateStr);
+};
+
 export const formatDate = (dateStr) => {
     if (!dateStr) return "—";
-    const date = new Date(dateStr);
+    const date = parseFecha(dateStr);
     return date.toLocaleDateString("es-CO", {
         day: "2-digit",
         month: "short",
@@ -19,7 +29,7 @@ export const formatDate = (dateStr) => {
 
 export const formatDateShort = (dateStr) => {
     if (!dateStr) return "—";
-    const date = new Date(dateStr);
+    const date = parseFecha(dateStr);
     return date.toLocaleDateString("es-CO", {
         day: "2-digit",
         month: "2-digit",
@@ -44,6 +54,15 @@ export const formatCurrencyInput = (value) => {
     const num = value.toString().replace(/[^0-9]/g, "");
     if (!num) return "";
     return parseInt(num, 10).toLocaleString("es-CO");
+};
+
+export const formatHora = (timeStr) => {
+    if (!timeStr) return "";
+    const clean = timeStr.toString().trim();
+    if (/^\d{2}:\d{2}/.test(clean)) return clean.substring(0, 5);
+    const date = new Date(`1970-01-01T${clean}`);
+    if (isNaN(date)) return clean;
+    return date.toTimeString().substring(0, 5);
 };
 
 export const cleanCurrencyInput = (value) => {

@@ -25,6 +25,11 @@ const toBackendFormat = (data) => {
         baseSalary: parseFloat(data.salario) || 0,
         payrollCycle: payrollCycle,
         active: data.activo ? true : false,
+        dni: data.cedula ? String(data.cedula).replace(/\D/g, '') : null,
+        phoneNumber: data.celular ? String(data.celular).replace(/\D/g, '') : null,
+        hireDate: data.fechaIngreso || null,
+        contractType: data.tipoVinculacion || 'LABORAL',
+        arlRiskLevel: Number(data.riesgoARL) || 1,
     };
 };
 
@@ -35,18 +40,22 @@ const toFrontendFormat = (data) => {
     return {
         id: data.id,
         nombre: data.fullName || '',
-        cedula: data.dni || data.cedula || `EMP-${data.id}`,
+        cedula: data.dni || data.cedula || '',
         celular: data.phoneNumber || data.celular || '',
         cargo: data.position || 'Entrenador',
         salario: data.baseSalary || 0,
         frecuenciaPago: data.payrollCycle === 'BIWEEKLY' ? 'QUINCENAL' : 
                         data.payrollCycle === 'MONTHLY' ? 'MENSUAL' : 'QUINCENAL',
-        fechaIngreso: data.hireDate || data.fechaIngreso || new Date().toISOString().split('T')[0],
+        // Sin fecha de ingreso no se inventa una: la nómina avisa que falta
+        fechaIngreso: data.hireDate || data.fechaIngreso || null,
+        tipoVinculacion: data.contractType || 'LABORAL',
+        riesgoARL: data.arlRiskLevel || 1,
         ultimoPago: data.lastPaymentDate || '',
         proximoPago: data.nextPaymentDate || '',
         activo: data.active === true || data.active === 1,
         username: data.username || '',
         userId: data.userId || data.user_id || null,
+        dailyAccruedCost: data.dailyAccruedCost || 0,
     };
 };
 
@@ -112,7 +121,6 @@ export const empleadosService = {
             console.log("=================================");
             console.log("📝 CREANDO EMPLEADO");
             console.log("=================================");
-            console.log("📦 Datos recibidos:", datos);
             
             let userId = null;
             
@@ -130,8 +138,6 @@ export const empleadosService = {
                         role: "RECEPTIONIST",
                         active: true
                     };
-                    
-                    console.log("📤 Enviando usuario al backend:", userPayload);
                     
                     const userResponse = await api.post('/users', userPayload);
                     console.log("✅ Usuario creado:", userResponse.data);
@@ -195,7 +201,6 @@ export const empleadosService = {
             console.log("Cargo:", empleadoMapeado.cargo);
             if (empleadoMapeado.username) {
                 console.log("👤 Usuario:", empleadoMapeado.username);
-                console.log("🔑 Contraseña:", datos.password);
             }
             
             return empleadoMapeado;
@@ -263,6 +268,21 @@ export const empleadosService = {
             return data;
         } catch (error) {
             console.error(`❌ Error al cambiar estado de empleado ${id}:`, error);
+            throw error;
+        }
+    },
+
+    /**
+     * Cambiar la contraseña de un usuario (empleado recepcionista)
+     * PATCH /api/users/{id}/password  (la contraseña va en el cuerpo, no en la URL)
+     */
+    async cambiarPassword(userId, nuevaPassword) {
+        try {
+            console.log(`🔑 Cambiando contraseña del usuario ${userId}...`);
+            const response = await api.patch(`/users/${userId}/password`, { newPassword: nuevaPassword });
+            return response.data?.data || response.data || response;
+        } catch (error) {
+            console.error(`❌ Error al cambiar contraseña del usuario ${userId}:`, error);
             throw error;
         }
     },

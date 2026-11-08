@@ -8,6 +8,7 @@ import Card from "../../components/ui/Card";
 import { clientesService } from "../../services/clientesService";
 import { empleadosService } from "../../services/empleadosService";
 import useAuthStore from "../../store/authStore";
+import { formatCurrencyInput } from "../../utils/formatters";
 
 const COP = (v) => "$" + Math.round(v || 0).toLocaleString("es-CO");
 
@@ -197,7 +198,9 @@ export default function UsuariosPanel() {
                 cedula: formCliente.cedula.trim(),
                 telefono: formCliente.telefono.trim() || null,
                 membresia: formCliente.membresia,
-                precioMensual: parseFloat(formCliente.precioMensual) || 80000,
+                precioMensual: parseFloat(formCliente.precioMensual) || 0,
+                // En este panel el administrador escribe el valor: si es mayor a 0, se cobra
+                cobrarMembresia: !editando && (parseFloat(formCliente.precioMensual) || 0) > 0,
                 entrenador: formCliente.entrenador || null,
                 entrenadorId: formCliente.entrenadorId || null,
                 estado: formCliente.estado
@@ -270,10 +273,10 @@ export default function UsuariosPanel() {
     // RENOVAR MEMBRESÍA
     // ============================================
     const renovarMembresia = async (id) => {
-        const dias = prompt("¿Cuántos días de membresía? (30, 15, 90, 180, 365)", "30");
+        const dias = prompt("¿Cuántos días de membresía? (1, 30, 90, 180, 365)", "30");
         if (!dias) return;
         
-        const monto = prompt("Monto a pagar:", "80000");
+        const monto = prompt("Valor cobrado (en pesos):", "");
         if (!monto) return;
         
         try {
@@ -635,9 +638,10 @@ export default function UsuariosPanel() {
                                 <label><span className="campo-label">Precio</span></label>
                                 <input 
                                     className="campo-input" 
-                                    type="number" 
-                                    value={formCliente.precioMensual}
-                                    onChange={e => setFormCliente({ ...formCliente, precioMensual: parseFloat(e.target.value) || 0 })}
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={formatCurrencyInput(formCliente.precioMensual)}
+                                    onChange={e => setFormCliente({ ...formCliente, precioMensual: e.target.value.replace(/[^0-9]/g, '') })}
                                     disabled={guardando}
                                 />
                             </div>

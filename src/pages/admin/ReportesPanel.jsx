@@ -6,6 +6,7 @@
 // VERSIÓN: 4.0 - COMPLETA Y CONECTADA AL BACKEND
 // ============================================================
 
+import { datosEmpresa } from "../../utils/empresa";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
@@ -20,6 +21,7 @@ import { clientesService } from "../../services/clientesService";
 import { empleadosService } from "../../services/empleadosService";
 import { productosService } from "../../services/productosService";
 import { ventasService } from "../../services/ventasService";
+import { ingresoService } from "../../services/ingresoService";
 
 // ============================================================
 // LIBRERÍAS PARA EXPORTACIÓN
@@ -184,12 +186,15 @@ export default function ReportesPanel() {
     const [productos, setProductos] = useState([]);
     const [ventasHoy, setVentasHoy] = useState([]);
     const [productosBajoStock, setProductosBajoStock] = useState([]);
+    const [egresos, setEgresos] = useState([]);
 
     // Datos por período
     const [turnosPeriodo, setTurnosPeriodo] = useState([]);
     const [ventasPeriodo, setVentasPeriodo] = useState([]);
     const [turnosPeriodoAnterior, setTurnosPeriodoAnterior] = useState([]);
     const [ventasPeriodoAnterior, setVentasPeriodoAnterior] = useState([]);
+    const [egresosPeriodo, setEgresosPeriodo] = useState([]);
+    const [egresosPeriodoAnterior, setEgresosPeriodoAnterior] = useState([]);
 
     const { usuario } = useAuthStore();
 
@@ -238,21 +243,30 @@ export default function ReportesPanel() {
         setCargando(true);
         setError(null);
         try {
-            const [clientesData, empleadosData, turnosData, productosData, ventasData, bajoStockData] = await Promise.all([
+            const [clientesData, empleadosData, turnosData, productosData, ventasData, bajoStockData, egresosData] = await Promise.all([
                 clientesService.listar().catch(() => []),
                 empleadosService.listar().catch(() => []),
                 turnoService.listarTodos().catch(() => []),
                 productosService.listarProductos().catch(() => []),
                 ventasService.ventasHoy().catch(() => []),
                 productosService.listarProductosBajoStock().catch(() => []),
+                ingresoService.listarEgresos().catch(() => []),
             ]);
 
-            setClientes(Array.isArray(clientesData) ? clientesData : []);
-            setEmpleados(Array.isArray(empleadosData) ? empleadosData : []);
-            setTurnosTodos(Array.isArray(turnosData) ? turnosData : []);
-            setProductos(Array.isArray(productosData) ? productosData : []);
-            setVentasHoy(Array.isArray(ventasData) ? ventasData : []);
-            setProductosBajoStock(Array.isArray(bajoStockData) ? bajoStockData : []);
+            const normalizeArray = (d) => {
+                if (Array.isArray(d)) return d;
+                if (d && d.data && Array.isArray(d.data)) return d.data;
+                if (d && d.data && d.data.data && Array.isArray(d.data.data)) return d.data.data;
+                return [];
+            };
+
+            setClientes(normalizeArray(clientesData));
+            setEmpleados(normalizeArray(empleadosData));
+            setTurnosTodos(normalizeArray(turnosData));
+            setProductos(normalizeArray(productosData));
+            setVentasHoy(normalizeArray(ventasData));
+            setProductosBajoStock(normalizeArray(bajoStockData));
+            setEgresos(normalizeArray(egresosData));
             setUltimaActualizacion(new Date());
         } catch (err) {
             console.error("Error cargando datos:", err);
@@ -267,26 +281,46 @@ export default function ReportesPanel() {
         try {
             const ant = rangoAnterior(fechaInicio, fechaFin);
 
-            const [actuales, anteriores] = await Promise.all([
+            const normalizeArray = (d) => {
+                if (Array.isArray(d)) return d;
+                if (d && d.data && Array.isArray(d.data)) return d.data;
+                if (d && d.data && d.data.data && Array.isArray(d.data.data)) return d.data.data;
+                return [];
+            };
+
+            const [actuales, anteriores, egresosData] = await Promise.all([
                 turnoService.obtenerPorRangoFechas(fechaInicio, fechaFin).catch(() => []),
                 turnoService.obtenerPorRangoFechas(ant.inicio, ant.fin).catch(() => []),
+                ingresoService.listarEgresos().catch(() => []),
             ]);
 
-            const a = Array.isArray(actuales) ? actuales : [];
-            const b = Array.isArray(anteriores) ? anteriores : [];
+            const a = normalizeArray(actuales);
+            const b = normalizeArray(anteriores);
 
             const cerradosA = a.filter(t => t.cerrado || t.closed);
             const cerradosB = b.filter(t => t.cerrado || t.closed);
 
             const [ventasA, ventasB] = await Promise.all([
-                Promise.all(cerradosA.map(t => ventasService.listarPorTurno(t.id).catch(() => []))),
-                Promise.all(cerradosB.map(t => ventasService.listarPorTurno(t.id).catch(() => []))),
+                Promise.all(cerradosA.map(t => ventasService.listarPorTurno(t.id).then(normalizeArray).catch(() => []))),
+                Promise.all(cerradosB.map(t => ventasService.listarPorTurno(t.id).then(normalizeArray).catch(() => []))),
             ]);
+
+            const allEgresos = normalizeArray(egresosData);
+            const egA = allEgresos.filter(e => {
+                const f = e.expenseDate || e.createdAt || "";
+                return f >= fechaInicio && f <= fechaFin;
+            });
+            const egB = allEgresos.filter(e => {
+                const f = e.expenseDate || e.createdAt || "";
+                return f >= ant.inicio && f <= ant.fin;
+            });
 
             setTurnosPeriodo(a);
             setTurnosPeriodoAnterior(b);
             setVentasPeriodo(ventasA.flat().filter(Boolean));
             setVentasPeriodoAnterior(ventasB.flat().filter(Boolean));
+            setEgresosPeriodo(egA);
+            setEgresosPeriodoAnterior(egB);
         } catch (err) {
             console.error("Error cargando período:", err);
         } finally {
@@ -330,7 +364,7 @@ export default function ReportesPanel() {
         const v = ventasHoy || [];
         const p = productos || [];
 
-        const ventasHoyTotal = v.reduce((s, i) => s + (i.total || i.monto || 0), 0);
+        const ventasHoyTotal = v.reduce((s, i) => s + (i.total || i.amount || i.totalAmount || i.subtotal || 0), 0);
         const turnosHoyCerrados = t.filter(i => (i.cerrado || i.closed) && fechaDeItem(i) === toISODate(hoy));
         const declaradoHoy = turnosHoyCerrados.reduce((s, i) => s + (i.declaredAmount || i.montoDeclarado || 0), 0);
         const activos = c.filter(i => i.active || i.activo || i.estado === "activo");
@@ -359,10 +393,12 @@ export default function ReportesPanel() {
         const ca = turnosPeriodo.filter(t => t.cerrado || t.closed);
         const cb = turnosPeriodoAnterior.filter(t => t.cerrado || t.closed);
 
-        const vA = ventasPeriodo.reduce((s, i) => s + (i.total || i.monto || 0), 0);
-        const vB = ventasPeriodoAnterior.reduce((s, i) => s + (i.total || i.monto || 0), 0);
+        const vA = ventasPeriodo.reduce((s, i) => s + (i.total || i.amount || i.totalAmount || i.subtotal || 0), 0);
+        const vB = ventasPeriodoAnterior.reduce((s, i) => s + (i.total || i.amount || i.totalAmount || i.subtotal || 0), 0);
         const dA = ca.reduce((s, i) => s + (i.declaredAmount || i.montoDeclarado || 0), 0);
         const dB = cb.reduce((s, i) => s + (i.declaredAmount || i.montoDeclarado || 0), 0);
+        const eA = egresosPeriodo.reduce((s, i) => s + (i.amount || 0), 0);
+        const eB = egresosPeriodoAnterior.reduce((s, i) => s + (i.amount || 0), 0);
 
         return {
             ingresos: vA + dA,
@@ -371,13 +407,17 @@ export default function ReportesPanel() {
             ventasAnterior: vB,
             declarado: dA,
             declaradoAnterior: dB,
+            egresos: eA,
+            egresosAnterior: eB,
+            gananciaBruta: (vA + dA) - eA,
+            gananciaBrutaAnterior: (vB + dB) - eB,
             turnos: ca.length,
             turnosAnterior: cb.length,
             numVentas: ventasPeriodo.length,
             numVentasAnterior: ventasPeriodoAnterior.length,
             promedio: ca.length > 0 ? dA / ca.length : 0,
         };
-    }, [turnosPeriodo, turnosPeriodoAnterior, ventasPeriodo, ventasPeriodoAnterior]);
+    }, [turnosPeriodo, turnosPeriodoAnterior, ventasPeriodo, ventasPeriodoAnterior, egresosPeriodo, egresosPeriodoAnterior]);
 
     // Clientes
     const reporteClientes = useMemo(() => {
@@ -492,7 +532,7 @@ export default function ReportesPanel() {
         });
         ventasPeriodo.forEach(v => {
             const f = fechaDeItem(v);
-            if (f && mapa[f] !== undefined) mapa[f] += v.total || v.monto || 0;
+            if (f && mapa[f] !== undefined) mapa[f] += v.total || v.amount || v.totalAmount || v.subtotal || 0;
         });
         return Object.entries(mapa).map(([fecha, valor]) => ({ label: fecha.slice(5), value: valor }));
     }, [turnosPeriodo, ventasPeriodo, fechaInicio, fechaFin]);
@@ -530,7 +570,7 @@ export default function ReportesPanel() {
             const header = (sub) => {
                 doc.setFontSize(18);
                 doc.setTextColor(30, 30, 30);
-                doc.text("Reporte GymCore", 14, 16);
+                doc.text(`Reporte ${datosEmpresa().nombre}`, 14, 16);
                 doc.setFontSize(10);
                 doc.setTextColor(120, 120, 120);
                 doc.text(`Generado: ${formatDate(new Date().toISOString())}  ·  ${formatDate(fechaInicio)} a ${formatDate(fechaFin)}`, 14, 22);
@@ -757,9 +797,9 @@ export default function ReportesPanel() {
         <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", marginBottom: "20px" }}>
                 <KpiCard icon="💰" value={COP(reporteFinanciero.ingresos)} label="Ingresos del período" color={COLORS.success} />
-                <KpiCard icon="📦" value={COP(reporteFinanciero.ventas)} label="Ventas" color={COLORS.primary} />
+                <KpiCard icon="📤" value={COP(reporteFinanciero.egresos)} label="Egresos del período" color={COLORS.danger} />
+                <KpiCard icon="📊" value={COP(reporteFinanciero.gananciaBruta)} label="Ganancia bruta" color={COLORS.primary} />
                 <KpiCard icon="🕐" value={COP(reporteFinanciero.declarado)} label="Turnos declarados" color={COLORS.purple} />
-                <KpiCard icon="📊" value={reporteFinanciero.turnos} label="Turnos cerrados" color={COLORS.warning} />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginBottom: "16px" }}>
@@ -772,9 +812,15 @@ export default function ReportesPanel() {
                         </span></span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f3f4f6" }}>
-                        <span>Ventas</span>
-                        <span><strong>{COP(reporteFinanciero.ventas)}</strong> <span style={{ color: reporteFinanciero.ventas >= reporteFinanciero.ventasAnterior ? COLORS.success : COLORS.danger }}>
-                            {reporteFinanciero.ventas >= reporteFinanciero.ventasAnterior ? "▲" : "▼"}
+                        <span>Egresos</span>
+                        <span><strong>{COP(reporteFinanciero.egresos)}</strong> <span style={{ color: reporteFinanciero.egresos <= reporteFinanciero.egresosAnterior ? COLORS.success : COLORS.danger }}>
+                            {reporteFinanciero.egresos <= reporteFinanciero.egresosAnterior ? "▼" : "▲"}
+                        </span></span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f3f4f6" }}>
+                        <span>Ganancia Bruta</span>
+                        <span><strong>{COP(reporteFinanciero.gananciaBruta)}</strong> <span style={{ color: reporteFinanciero.gananciaBruta >= reporteFinanciero.gananciaBrutaAnterior ? COLORS.success : COLORS.danger }}>
+                            {reporteFinanciero.gananciaBruta >= reporteFinanciero.gananciaBrutaAnterior ? "▲" : "▼"}
                         </span></span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>

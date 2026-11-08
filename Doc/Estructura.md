@@ -1,4 +1,4 @@
-# GymCore — Estructura del Proyecto
+# System Gym — Estructura del Proyecto
 
 > Software de gestión integral para gimnasios · Versión Local (Desktop)  
 > Stack: React + Vite · Tailwind CSS · SQLite (Electron / Tauri) · Zustand

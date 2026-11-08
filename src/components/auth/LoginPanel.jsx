@@ -17,7 +17,6 @@ export default function LoginPanel() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const loading = useAuthStore((state) => state.loading);
   const errorStore = useAuthStore((state) => state.error);
-  const hydrate = useAuthStore((state) => state.hydrate); // ← CORREGIDO: usar hydrate en lugar de restoreSession
   const clearError = useAuthStore((state) => state.clearError);
 
   // ==========================================================================
@@ -30,26 +29,17 @@ export default function LoginPanel() {
   // ==========================================================================
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
   // ==========================================================================
-  // Efecto: Restaurar sesión al cargar
+  // Efecto: Redirigir cuando el usuario ya existe (sesion guardada)
   // ==========================================================================
   useEffect(() => {
-    console.log("=================================");
-    console.log("LOGIN PANEL - Inicializando");
-    console.log("=================================");
-    
-    // CORREGIDO: usar hydrate en lugar de restoreSession
-    const restored = hydrate();
-    console.log("Sesión restaurada:", restored);
-    
-    // Si ya hay usuario, redirigir
-    if (restored && usuario) {
-      console.log("Usuario existente, redirigiendo...");
+    if (usuario && isAuthenticated) {
       redirigirPorRol(usuario);
     }
-  }, []); // ← Asegurar que solo se ejecute una vez
+  }, []);
 
   // ==========================================================================
   // Efecto: Redirigir cuando el usuario cambia (login exitoso)
@@ -104,10 +94,6 @@ export default function LoginPanel() {
     console.log("=================================");
     console.log("LOGIN PANEL - Intentando iniciar sesión");
     console.log("=================================");
-    console.log({
-      username,
-      password,
-    });
 
     try {
       // ----------------------------------------------------------------------
@@ -154,7 +140,11 @@ export default function LoginPanel() {
 
       <div className="login-card">
 
-        <h2>Iniciar Sesión</h2>
+        <div className="login-brand">
+          <span className="login-logo">💪</span>
+          <h2>System Gym</h2>
+          <p>Bienvenido, ingresa tus credenciales para continuar</p>
+        </div>
 
         {/* ================================================================ */}
         {/* Usuario */}
@@ -187,15 +177,24 @@ export default function LoginPanel() {
             Contraseña
           </label>
 
-          <input
-            id="password"
-            type="password"
-            placeholder="Ingrese contraseña"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={loading}
-          />
+          <div className="password-wrapper">
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="Ingrese contraseña"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={loading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+            >
+              {showPassword ? "🙈" : "👁️"}
+            </button>
+          </div>
 
         </div>
 

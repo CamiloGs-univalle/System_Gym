@@ -54,15 +54,6 @@ export const authService = {
   // ==========================================================================
   async login(username, password) {
 
-    console.log("=================================");
-    console.log("LOGIN REQUEST");
-    console.log("=================================");
-
-    console.log({
-      username,
-      password,
-    });
-
     // ------------------------------------------------------------------------
     // Llamada al backend
     // ------------------------------------------------------------------------
@@ -79,7 +70,6 @@ export const authService = {
     console.log("LOGIN RESPONSE");
     console.log("=================================");
 
-    console.log(response.data);
 
     // ------------------------------------------------------------------------
     // Respuesta completa
@@ -140,6 +130,7 @@ export const authService = {
         role: data.data.role,
         email: data.data.email || null,
         fullName: data.data.fullName || data.data.username,
+        mustChangePassword: data.data.mustChangePassword === true,
       };
       
       userId = user.id;
@@ -166,12 +157,9 @@ export const authService = {
     // Si no se encontró un ID, intentar generarlo desde el username
     // ------------------------------------------------------------------------
     
+    // Sin ID real del backend no se puede operar (turnos, ventas, auditoría)
     if (user && !user.id) {
-      console.warn('⚠️ El usuario no tiene ID. Asignando ID desde username hash.');
-      // En caso extremo, usar un hash del username como ID
-      // Esto es solo para desarrollo, en producción debe venir del backend
-      user.id = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 1000 + 1;
-      userId = user.id;
+      throw new Error('El servidor no devolvió el identificador del usuario.');
     }
 
     // ------------------------------------------------------------------------
@@ -238,8 +226,6 @@ export const authService = {
     // Verificación final
     // ------------------------------------------------------------------------
 
-    console.log("TOKEN:", localStorage.getItem(TOKEN_KEY));
-    console.log("USER:", localStorage.getItem(USER_KEY));
     console.log("USER ID:", userId);
 
     return {
@@ -253,6 +239,28 @@ export const authService = {
   // ==========================================================================
   // Logout
   // ==========================================================================
+  // ==========================================================================
+  // Cambiar la propia contraseña (obligatorio en el primer inicio de sesión)
+  // ==========================================================================
+  async cambiarMiPassword(actual, nueva) {
+    const response = await api.post('/auth/change-password', {
+      currentPassword: actual,
+      newPassword: nueva,
+    });
+    const token = response.data?.data?.token;
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    }
+    const user = this.getStoredUser();
+    if (user) {
+      const actualizado = { ...user, mustChangePassword: false };
+      localStorage.setItem(USER_KEY, JSON.stringify(actualizado));
+      const store = useAuthStore.getState();
+      if (store.setUsuario) store.setUsuario(actualizado);
+    }
+    return true;
+  },
+
   logout() {
 
     localStorage.removeItem(TOKEN_KEY);

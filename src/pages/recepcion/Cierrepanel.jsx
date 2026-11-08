@@ -221,7 +221,8 @@ export default function CierrePanel() {
   const totalFisico = vEfectivo + vDigital;
   const diferencia = totalFisico - totalEsperado;
   const haCuadrado = Math.abs(diferencia) <= 500;
-  const haIngresado = vEfectivo > 0 || vDigital > 0;
+  // Arqueo ciego: basta con que se haya escrito el efectivo contado (puede ser 0)
+  const haIngresado = efectivoContado !== "" && efectivoContado !== null && efectivoContado !== undefined;
 
   const estadoCuadre = !haIngresado
     ? null
@@ -252,8 +253,8 @@ export default function CierrePanel() {
    * Abre el modal de confirmación de cierre
    */
   const handleCierre = () => {
-    if (!haIngresado || estadoCuadre === "faltante") {
-      alert('⚠️ Debes ingresar los valores del cuadre y que no haya faltante para poder cerrar.');
+    if (!haIngresado) {
+      alert('⚠️ Escribe el efectivo que contaste en la caja para poder cerrar.');
       return;
     }
     setConfirmando(true);
@@ -283,10 +284,11 @@ export default function CierrePanel() {
       console.log('📊 Datos de cierre:', cierreData);
       
       // 1. Cerrar el turno en el backend
+      let veredicto = null;
       if (turnoActivo && turnoActivo.id) {
         try {
-          await turnoService.cerrar(turnoActivo.id, vEfectivo);
-          console.log('✅ Turno cerrado en backend');
+          const resultado = await turnoService.cerrar(turnoActivo.id, vEfectivo);
+          veredicto = resultado?.veredicto || null;
         } catch (error) {
           if (error.alreadyClosed) {
             console.warn('⚠️ El turno ya estaba cerrado');
@@ -304,7 +306,8 @@ export default function CierrePanel() {
       localStorage.removeItem('gymcore-ventas');
       
       setConfirmando(false);
-      alert('✅ ¡Jornada cerrada exitosamente!');
+      // El resultado del cuadre lo calcula el sistema, no la pantalla
+      alert('✅ Jornada cerrada.' + (veredicto ? '\n\nResultado del arqueo: ' + veredicto : ''));
       
       // 4. Recargar la página para mostrar el estado de cierre
       window.location.reload();
@@ -615,25 +618,12 @@ export default function CierrePanel() {
         </div>
 
         <div className="cierre-cuadre-body">
-          {/* Resumen esperado */}
-          <div className="cierre-esperado">
-            <div className="cierre-esperado-row">
-              <span>Saldo inicial</span>
-              <span>{COP(vSaldoInicial)}</span>
-            </div>
-            <div className="cierre-esperado-row">
-              <span>+ Ingresos del día</span>
-              <span>{COP(resumen.totalGeneral)}</span>
-            </div>
-            <div className="cierre-esperado-row">
-              <span>− Egresos / gastos</span>
-              <span>{COP(vEgresos)}</span>
-            </div>
-            <div className="cierre-esperado-row cierre-esperado-total">
-              <span>Total esperado en caja</span>
-              <span>{COP(totalEsperado)}</span>
-            </div>
-          </div>
+          {/* Arqueo ciego: no se muestra cuánto debería haber. Se cuenta la caja
+              y el sistema calcula la diferencia al cerrar. */}
+          <p className="cierre-esperado" style={{ fontSize: 13, color: '#4b5563' }}>
+            Cuenta el efectivo de la caja y escríbelo abajo. El sistema calculará si hay
+            diferencia y te mostrará el resultado al cerrar.
+          </p>
 
           {/* Inputs con formateo de moneda */}
           <div className="cierre-inputs-grid">
@@ -675,8 +665,8 @@ export default function CierrePanel() {
             </label>
           </div>
 
-          {/* Resultado del cuadre */}
-          {estadoCuadre && (
+          {/* Resultado del cuadre (oculto: arqueo ciego) */}
+          {false && estadoCuadre && (
             <div className={`cierre-resultado cierre-resultado-${estadoCuadre}`}>
               <div className="cierre-resultado-left">
                 <span className="cierre-resultado-icon">
@@ -699,18 +689,16 @@ export default function CierrePanel() {
 
           {/* Botón de cierre */}
           <button
-            className={`cierre-btn-final ${haIngresado && estadoCuadre !== "faltante" ? "ready" : "disabled"}`}
+            className={`cierre-btn-final ${haIngresado ? "ready" : "disabled"}`}
             onClick={handleCierre}
-            disabled={!haIngresado || estadoCuadre === "faltante"}
+            disabled={!haIngresado}
           >
-            {!haIngresado 
-              ? 'Ingresa los valores del cuadre' 
-              : estadoCuadre === 'faltante' 
-                ? '❌ Faltante - Revisa el conteo'
-                : '✅ Registrar cierre de jornada'}
+            {!haIngresado
+              ? 'Escribe el efectivo contado'
+              : '✅ Registrar cierre de jornada'}
           </button>
 
-          {estadoCuadre === "faltante" && haIngresado && (
+          {false && estadoCuadre === "faltante" && haIngresado && (
             <p className="cierre-aviso-faltante">
               ⚠️ Hay un faltante de {COP(Math.abs(diferencia))}. Revisa el conteo antes de cerrar.
             </p>
@@ -737,13 +725,6 @@ export default function CierrePanel() {
               • Efectivo contado: {COP(vEfectivo)}<br />
               • Digital contado: {COP(vDigital)}<br />
               • Total físico: {COP(totalFisico)}<br />
-              • Total esperado: {COP(totalEsperado)}<br />
-              {estadoCuadre === "sobrante" && (
-                <>• <span style={{ color: '#f59e0b' }}>Sobrante: {COP(diferencia)}</span></>
-              )}
-              {estadoCuadre === "ok" && (
-                <>• <span style={{ color: '#10b981' }}>✅ Caja cuadrada</span></>
-              )}
             </p>
             <div className="modal-acciones">
               <button 

@@ -21,6 +21,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import { productosService } from '../../services/productosService';
+import { formatCurrencyInput } from '../../utils/formatters';
 
 // ============================================================
 // FUNCIONES DE UTILIDAD
@@ -432,10 +433,10 @@ export default function ProductosPanel() {
             return;
         }
 
-        const precio = parseInt(nuevoProducto.precio) || 0;
-        const costo = parseInt(nuevoProducto.costo) || 0;
-        const stock = parseInt(nuevoProducto.stock) || 0;
-        const stockMinimo = parseInt(nuevoProducto.stockMinimo) || 0;
+        const precio = parseInt(nuevoProducto.precio.toString().replace(/[^0-9]/g, ''), 10) || 0;
+        const costo = parseInt(nuevoProducto.costo.toString().replace(/[^0-9]/g, ''), 10) || 0;
+        const stock = parseInt(nuevoProducto.stock.toString().replace(/[^0-9]/g, ''), 10) || 0;
+        const stockMinimo = parseInt(nuevoProducto.stockMinimo.toString().replace(/[^0-9]/g, ''), 10) || 0;
 
         const datosProducto = {
             name: nuevoProducto.nombre.trim(),
@@ -497,21 +498,11 @@ export default function ProductosPanel() {
     };
 
     // ============================================================
-    // 9. FUNCIÓN PRINCIPAL: ACTUALIZAR STOCK (CORREGIDA ✅)
+    // 9. FUNCIÓN: ACTUALIZAR STOCK DEL PRODUCTO
     // ============================================================
 
     /**
-     * ✅ ACTUALIZA EL STOCK DE UN PRODUCTO
-     * 
-     * Esta función es la más importante del componente. A diferencia de la
-     * versión anterior que asumía que el cambio se guardó solo porque el
-     * PUT devolvió 200, esta versión:
-     * 
-     * 1. Envía el PUT con el nuevo stock deseado
-     * 2. Obtiene el producto actualizado del backend (GET)
-     * 3. Compara el stock enviado con el stock guardado
-     * 4. Actualiza la UI con el valor REAL del backend
-     * 5. Muestra una alerta clara si hay discrepancia
+     * Actualiza el stock de un producto enviando el nuevo valor al backend.
      * 
      * @async
      * @param {number} categoriaId - ID de la categoría del producto
@@ -520,14 +511,12 @@ export default function ProductosPanel() {
      * @returns {Promise<void>}
      */
     const actualizarStock = async (categoriaId, productoId, nuevoStock) => {
-        // ✅ 1. Validar el stock deseado
         const stockDeseado = parseInt(nuevoStock);
         if (isNaN(stockDeseado) || stockDeseado < 0) {
             console.warn('⚠️ Stock inválido:', nuevoStock);
             return;
         }
 
-        // ✅ 2. Prevenir doble click mientras se procesa
         if (actualizandoStockId === productoId) {
             console.log('⏳ Ya se está actualizando este producto');
             return;
@@ -535,123 +524,34 @@ export default function ProductosPanel() {
         setActualizandoStockId(productoId);
 
         try {
-            // ✅ 3. Obtener la lista actual y encontrar el producto
-            const currentList = Array.isArray(categoriasList) ? categoriasList : [];
-            const categoria = currentList.find(c => c.id === categoriaId);
-            const producto = categoria?.productos?.find(p => p.id === productoId);
-
-            if (!producto) {
-                console.error('❌ Producto no encontrado');
-                setActualizandoStockId(null);
-                return;
+            let raw = null;
+            for (const cat of categoriasList) {
+                const found = (cat.productos || []).find(p => p.id === productoId);
+                if (found && found._raw) { raw = found._raw; break; }
             }
 
-            // ✅ 4. Preparar los datos para el PUT
-            const datosActualizados = {
-                name: producto.nombre,
-                code: producto.codigo,
-                salePrice: producto.precio,
-                costPrice: producto.costo,
-                stock: stockDeseado,
-                minimumStock: producto.stockMinimo,
-                categoryId: parseInt(categoriaId)
-            };
-
-            console.log(`📤 Enviando PUT /products/${productoId} con stock: ${stockDeseado}`);
-            console.log('📤 Payload completo:', JSON.stringify(datosActualizados, null, 2));
-
-            // ✅ 5. Enviar la actualización al backend
-            const putResponse = await productosService.actualizarProducto(productoId, datosActualizados);
-            console.log('📥 Respuesta PUT:', putResponse);
-
-            // ✅ 6. Extraer el producto de la respuesta del PUT
-            let productoConfirmado = extraerEntidad(putResponse);
-
-            // ✅ 7. Si el PUT no devuelve el producto, hacer un GET
-            if (!productoConfirmado || productoConfirmado.stock === undefined) {
-                console.log('🔄 El PUT no devolvió el producto, haciendo GET...');
-                const getResponse = await productosService.obtenerProductoPorId(productoId);
-                console.log('📥 Respuesta GET:', getResponse);
-                productoConfirmado = extraerEntidad(getResponse);
-            }
-
-            // ✅ 8. Obtener el stock guardado en el backend
-            const stockGuardadoEnBackend = productoConfirmado?.stock;
-            console.log(`📊 Stock enviado: ${stockDeseado}, Stock guardado: ${stockGuardadoEnBackend}`);
-
-            // ✅ 9. ACTUALIZAR UI CON EL VALOR REAL DEL BACKEND
-            if (stockGuardadoEnBackend !== undefined) {
-                // Actualizar el estado local con el valor real del backend
-                setCategoriasList(
-                    currentList.map(cat => {
-                        if (cat.id === categoriaId) {
-                            return {
-                                ...cat,
-                                productos: (cat.productos || []).map(p => {
-                                    if (p.id === productoId) {
-                                        // ✅ Actualizar con el valor del backend
-                                        return { ...p, stock: stockGuardadoEnBackend };
-                                    }
-                                    return p;
-                                })
-                            };
-                        }
-                        return cat;
-                    })
-                );
-            } else {
-                // ❌ No se pudo obtener el stock guardado, recargar todo
-                console.warn('⚠️ No se pudo obtener el stock guardado, recargando...');
-                await cargarDatos();
-                setActualizandoStockId(null);
-                return;
-            }
-
-            // ✅ 10. Comparar y mostrar resultado
-            if (stockGuardadoEnBackend === stockDeseado) {
-                // ✅ El stock se actualizó correctamente
-                console.log('✅ Stock actualizado correctamente');
-                // No mostrar alert para no interrumpir el flujo
-            } else {
-                // ⚠️ El backend modificó el stock automáticamente
-                const diferencia = stockGuardadoEnBackend - stockDeseado;
-                console.warn('⚠️ El backend modificó el stock automáticamente', {
-                    enviado: stockDeseado,
-                    guardado: stockGuardadoEnBackend,
-                    diferencia: diferencia
+            if (raw) {
+                await productosService.actualizarProducto(productoId, {
+                    name: raw.name,
+                    code: raw.code,
+                    salePrice: raw.salePrice,
+                    costPrice: raw.costPrice,
+                    stock: stockDeseado,
+                    minimumStock: raw.minimumStock,
+                    categoryId: raw.categoryId
                 });
-                
-                // ✅ Mostrar alerta informativa (NO de error)
-                alert(
-                    `ℹ️ El stock fue ajustado automáticamente por el sistema.\n\n` +
-                    `📤 Stock enviado: ${stockDeseado}\n` +
-                    `📥 Stock guardado: ${stockGuardadoEnBackend}\n` +
-                    `📊 Diferencia: ${diferencia > 0 ? '+' : ''}${diferencia}\n\n` +
-                    `Esto puede deberse a:\n` +
-                    `• Reglas de negocio en el backend\n` +
-                    `• Cálculos automáticos de stock\n` +
-                    `• Validaciones del sistema\n\n` +
-                    `✅ El valor mostrado ahora es el real guardado en el backend.`
-                );
+            } else {
+                await productosService.actualizarProducto(productoId, { stock: stockDeseado });
             }
+
+            await cargarDatos();
+            console.log('✅ Stock actualizado y datos recargados');
 
         } catch (err) {
-            // ❌ Manejo de errores
             console.error('❌ Error al actualizar stock:', err);
-
-            let mensaje = 'Error al actualizar el stock: ';
-            if (err.details?.violations) {
-                const violaciones = err.details.violations.map(v => v.message).join(', ');
-                mensaje += violaciones;
-            } else if (err.message) {
-                mensaje += err.message;
-            }
-            alert('❌ ' + mensaje);
-
-            // ✅ Recargar datos para mantener consistencia
+            alert('❌ Error al actualizar el stock: ' + (err.message || 'Error desconocido'));
             await cargarDatos();
         } finally {
-            // ✅ Liberar el bloqueo de actualización
             setActualizandoStockId(null);
         }
     };
@@ -1025,9 +925,10 @@ export default function ProductosPanel() {
                                     <span className="campo-label">Precio ($)</span>
                                 </label>
                                 <input
-                                    type="number"
-                                    value={nuevoProducto.precio}
-                                    onChange={(e) => setNuevoProducto({...nuevoProducto, precio: e.target.value})}
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={formatCurrencyInput(nuevoProducto.precio)}
+                                    onChange={(e) => setNuevoProducto({...nuevoProducto, precio: e.target.value.replace(/[^0-9]/g, '')})}
                                     placeholder="0"
                                     className="campo-input"
                                 />
@@ -1039,9 +940,10 @@ export default function ProductosPanel() {
                                     <span className="campo-label">Costo ($)</span>
                                 </label>
                                 <input
-                                    type="number"
-                                    value={nuevoProducto.costo}
-                                    onChange={(e) => setNuevoProducto({...nuevoProducto, costo: e.target.value})}
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={formatCurrencyInput(nuevoProducto.costo)}
+                                    onChange={(e) => setNuevoProducto({...nuevoProducto, costo: e.target.value.replace(/[^0-9]/g, '')})}
                                     placeholder="0"
                                     className="campo-input"
                                 />

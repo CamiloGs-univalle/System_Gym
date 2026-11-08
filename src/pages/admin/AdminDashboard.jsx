@@ -9,16 +9,26 @@ import ActivityFeed from "../../components/admin/ActivityFeed";
 import QuickActions from "../../components/admin/QuickActions";
 import UsuariosPanel from "./UsuariosPanel";
 import ProductosPanel from "../products/productos";
+import IngresoPanel from "../ingreso/IngresoPanel";
+import "../../styles/ingresoCSS/ingreso.css";
 import FinanzasPanel from "./FinanzasPanel";
-import TurnosPanel from "./TurnosPanel";
+import TurnosPanel from "./turnos/TurnosPanel";
 import EmpleadosPanel from "./EmpleadosPanel";
 import ReportesPanel from "./ReportesPanel";
 import ConfiguracionPanel from "./ConfiguracionPanel";
+import PlanesPanel from "./gimnasio/PlanesPanel";
+import PagosPanel from "./gimnasio/PagosPanel";
+import CarteraPanel from "./gimnasio/CarteraPanel";
+import NominaPanel from "./nomina/NominaPanel";
+import LogoutConfirmModal from "../../components/common/LogoutConfirmModal";
 import { COP, formatDate, calculateDaysBetween } from "../../utils/formatters";
 import useAuthStore from "../../store/authStore";
 import { clientesService } from "../../services/clientesService";
 import { empleadosService } from "../../services/empleadosService";
 import { turnoService } from "../../services/turnoService";
+import { ventasService } from "../../services/ventasService";
+import { productosService } from "../../services/productosService";
+import { ingresoService } from "../../services/ingresoService";
 import "../../styles/adminCSS/index.css";
 
 // Utilidades
@@ -33,12 +43,17 @@ const calcularDiasRestantes = (fechaVencimiento) => {
 const tabs = [
     { id: "dashboard", label: "Dashboard", icon: "📊" },
     { id: "usuarios", label: "Clientes", icon: "👥" },
+    { id: "planes", label: "Planes", icon: "📋" },
+    { id: "pagos", label: "Pagos", icon: "💰" },
+    { id: "cartera", label: "Cartera", icon: "📈" },
     { id: "empleados", label: "Empleados", icon: "👷" },
+    { id: "nomina", label: "Nomina", icon: "📝" },
     { id: "productos", label: "Inventario", icon: "📦" },
-    { id: "finanzas", label: "Finanzas", icon: "💰" },
+    { id: "ingreso", label: "Ingreso Producto", icon: "📥" },
+    { id: "finanzas", label: "Finanzas", icon: "💵" },
     { id: "turnos", label: "Turnos", icon: "🕐" },
     { id: "reportes", label: "Reportes", icon: "📋" },
-    { id: "configuracion", label: "Configuración", icon: "⚙️" },
+    { id: "configuracion", label: "Configuracion", icon: "⚙️" },
 ];
 
 export default function AdminDashboard() {
@@ -49,9 +64,9 @@ export default function AdminDashboard() {
         clientes: [],
         empleados: [],
         turnos: [],
-        ingresosMensualidades: [],
-        ingresosProductos: [],
-        egresos: []
+        ventasMes: [],
+        egresosMes: [],
+        productos: []
     });
     const navigate = useNavigate();
 
@@ -106,27 +121,48 @@ export default function AdminDashboard() {
                     turnosData = [];
                 }
                 
-                // Cargar finanzas - datos mock por ahora
-                const ingresosMensualidadesData = [
-                    { id: 1, fecha: "2026-07-01", monto: 80000, clienteNombre: "Juan Pérez", tipo: "Mensual", metodoPago: "Efectivo" },
-                    { id: 2, fecha: "2026-07-05", monto: 150000, clienteNombre: "María García", tipo: "Trimestral", metodoPago: "Transferencia" }
-                ];
-                
-                const ingresosProductosData = [
-                    { id: 1, fecha: "2026-07-02", total: 45000, producto: "Proteína Whey", cantidad: 2 }
-                ];
-                
-                const egresosData = [
-                    { id: 1, fecha: "2026-07-03", monto: 120000, concepto: "Pago servicios", categoria: "Servicios" }
-                ];
-                
+                // Cargar finanzas del mes desde el backend
+                const mesActual = hoy.slice(0, 7);
+                let ventasMes = [];
+                try {
+                    const ventasResp = await ventasService.ventasHoy();
+                    ventasMes = Array.isArray(ventasResp) ? ventasResp
+                        : Array.isArray(ventasResp?.data) ? ventasResp.data
+                        : Array.isArray(ventasResp?.data?.data) ? ventasResp.data.data
+                        : [];
+                } catch (e) {
+                    console.error("Error cargando ventas:", e);
+                }
+
+                let egresosMes = [];
+                try {
+                    const egresosResp = await ingresoService.listarEgresos();
+                    egresosMes = Array.isArray(egresosResp) ? egresosResp
+                        : Array.isArray(egresosResp?.data) ? egresosResp.data
+                        : Array.isArray(egresosResp?.data?.data) ? egresosResp.data.data
+                        : [];
+                } catch (e) {
+                    console.error("Error cargando egresos:", e);
+                }
+
+                let productos = [];
+                try {
+                    const productosResp = await productosService.listarProductos();
+                    productos = Array.isArray(productosResp) ? productosResp
+                        : Array.isArray(productosResp?.data) ? productosResp.data
+                        : Array.isArray(productosResp?.data?.data) ? productosResp.data.data
+                        : [];
+                } catch (e) {
+                    console.error("Error cargando productos:", e);
+                }
+
                 setDatosDashboard({
                     clientes: clientesData,
                     empleados: empleadosData,
                     turnos: turnosData,
-                    ingresosMensualidades: ingresosMensualidadesData,
-                    ingresosProductos: ingresosProductosData,
-                    egresos: egresosData
+                    ventasMes,
+                    egresosMes,
+                    productos
                 });
                 
             } catch (error) {
@@ -152,43 +188,46 @@ export default function AdminDashboard() {
     }, []);
 
     // Stats para KPIs
-    const { clientes, empleados, turnos, ingresosMensualidades, ingresosProductos, egresos } = datosDashboard;
+    const { clientes, empleados, turnos, ventasMes, egresosMes, productos } = datosDashboard;
 
     const clientesActivos = useMemo(() =>
-        clientes?.filter(c => c.estado === "activo" && c.mensualidad?.activa).length || 0,
+        clientes?.filter(c => c.activo && c.membresia?.estado === "ACTIVA").length || 0,
         [clientes]);
 
     const clientesVencidos = useMemo(() =>
         clientes?.filter(c => {
-            const dias = calcularDiasRestantes(c.mensualidad?.fechaVencimiento);
-            return dias < 0 && c.estado === "activo";
+            const dias = calcularDiasRestantes(c.membresia?.fechaVencimiento);
+            return dias < 0 && c.activo;
         }).length || 0,
         [clientes]);
 
     const clientesPorVencer = useMemo(() => {
         return clientes?.filter(c => {
-            const dias = calcularDiasRestantes(c.mensualidad?.fechaVencimiento);
-            return dias >= 0 && dias <= 3 && c.estado === "activo";
+            const dias = calcularDiasRestantes(c.membresia?.fechaVencimiento);
+            return dias >= 0 && dias <= 3 && c.activo;
         }).length || 0;
     }, [clientes]);
 
     const ingresoMes = useMemo(() => {
         const mesActual = hoy.slice(0, 7);
-        const mem = ingresosMensualidades
-            ?.filter(i => i.fecha?.startsWith(mesActual))
-            ?.reduce((a, i) => a + (i.monto || 0), 0) || 0;
-        const prod = ingresosProductos
-            ?.filter(i => i.fecha?.startsWith(mesActual))
-            ?.reduce((a, i) => a + (i.total || 0), 0) || 0;
-        return mem + prod;
-    }, [ingresosMensualidades, ingresosProductos]);
+        const totalVentasMes = ventasMes
+            ?.filter(v => (v.transactionDate || v.fecha || v.createdAt || "").startsWith(mesActual))
+            ?.reduce((a, v) => a + (v.totalAmount || v.total || v.monto || 0), 0) || 0;
+        return totalVentasMes;
+    }, [ventasMes]);
+
+    const ingresoHoy = useMemo(() => {
+        return ventasMes
+            ?.filter(v => (v.transactionDate || v.fecha || v.createdAt || "").startsWith(hoy))
+            ?.reduce((a, v) => a + (v.totalAmount || v.total || v.monto || 0), 0) || 0;
+    }, [ventasMes]);
 
     const egresoMes = useMemo(() => {
         const mesActual = hoy.slice(0, 7);
-        return egresos
-            ?.filter(e => e.fecha?.startsWith(mesActual))
-            ?.reduce((a, e) => a + (e.monto || 0), 0) || 0;
-    }, [egresos]);
+        return egresosMes
+            ?.filter(e => (e.fecha || e.date || e.createdAt || "").startsWith(mesActual))
+            ?.reduce((a, e) => a + (e.monto || e.total || e.amount || 0), 0) || 0;
+    }, [egresosMes]);
 
     const turnoAbierto = turnos?.find(t => t.fecha === hoy && !t.cerrado);
     const totalEmpleados = empleados?.filter(e => e.activo).length || 0;
@@ -224,8 +263,8 @@ export default function AdminDashboard() {
         },
         {
             icon: "💰",
-            value: COP(ingresoMes),
-            label: "Ingresos del Mes",
+            value: COP(ingresoHoy),
+            label: "Ingresos de Hoy",
             subtitle: `Egresos ${COP(egresoMes)}`,
             color: "#10b981",
             bg: "#ecfdf5",
@@ -233,9 +272,9 @@ export default function AdminDashboard() {
         },
         {
             icon: "📈",
-            value: COP(ingresoMes - egresoMes),
+            value: COP(ingresoHoy - egresoMes),
             label: "Utilidad Neta",
-            subtitle: `${((ingresoMes - egresoMes) / (ingresoMes || 1) * 100).toFixed(1)}% margen`,
+            subtitle: `${((ingresoHoy - egresoMes) / (ingresoHoy || 1) * 100).toFixed(1)}% margen`,
             color: "#8b5cf6",
             bg: "#f5f3ff",
             onClick: () => setTabActiva("finanzas")
@@ -260,7 +299,7 @@ export default function AdminDashboard() {
         },
         {
             icon: "📦",
-            value: "32",
+            value: productos?.length || 0,
             label: "Productos",
             subtitle: "En inventario",
             color: "#f43f5e",
@@ -283,27 +322,25 @@ export default function AdminDashboard() {
     const clientesPorVencerLista = useMemo(() => {
         return clientes
             ?.filter(c => {
-                const dias = calcularDiasRestantes(c.mensualidad?.fechaVencimiento);
-                return dias >= 0 && dias <= 5 && c.estado === "activo" && c.mensualidad?.activa;
+                const dias = calcularDiasRestantes(c.membresia?.fechaVencimiento);
+                return dias >= 0 && dias <= 5 && c.activo && c.membresia?.estado === "ACTIVA";
             })
             ?.sort((a, b) =>
-                calcularDiasRestantes(a.mensualidad?.fechaVencimiento) -
-                calcularDiasRestantes(b.mensualidad?.fechaVencimiento)
+                calcularDiasRestantes(a.membresia?.fechaVencimiento) -
+                calcularDiasRestantes(b.membresia?.fechaVencimiento)
             ) || [];
     }, [clientes]);
 
     const logout = useAuthStore((state) => state.logout);
+    const [confirmLogout, setConfirmLogout] = useState(false);
 
     const handleLogout = () => {
-        if (!window.confirm("¿Deseas cerrar sesión?")) return;
-
         console.log("=================================");
         console.log("ADMIN DASHBOARD - Cerrando sesión");
         console.log("=================================");
 
         logout();
         navigate("/login", { replace: true });
-        window.location.reload();
 
         console.log("✅ Sesión cerrada y redirigido al login");
     };
@@ -386,7 +423,7 @@ export default function AdminDashboard() {
                                         </div>
                                     ) : (
                                         clientesPorVencerLista.slice(0, 5).map(c => {
-                                            const dias = calcularDiasRestantes(c.mensualidad?.fechaVencimiento);
+                                            const dias = calcularDiasRestantes(c.membresia?.fechaVencimiento);
                                             return (
                                                 <div key={c.id} className="expiring-item">
                                                     <span className="expiring-name">{c.nombre}</span>
@@ -412,10 +449,20 @@ export default function AdminDashboard() {
                 );
             case "usuarios":
                 return <UsuariosPanel />;
+            case "planes":
+                return <PlanesPanel />;
+            case "pagos":
+                return <PagosPanel />;
+            case "cartera":
+                return <CarteraPanel />;
             case "empleados":
                 return <EmpleadosPanel />;
+            case "nomina":
+                return <NominaPanel />;
             case "productos":
                 return <ProductosPanel />;
+            case "ingreso":
+                return <IngresoPanel />;
             case "finanzas":
                 return <FinanzasPanel />;
             case "turnos":
@@ -439,12 +486,23 @@ export default function AdminDashboard() {
                     </p>
                 </div>
                 <div className="exec-header-right">
+                    <div className="exec-user">
+                        <span className="exec-user-avatar">👤</span>
+                        <div className="exec-user-info">
+                            <span className="exec-user-name">
+                                {usuario?.fullName || usuario?.nombre || usuario?.username || "Administrador"}
+                            </span>
+                            <span className="exec-user-role">
+                                {usuario?.role || "Administrador"}
+                            </span>
+                        </div>
+                    </div>
                     <span className="exec-badge">
                         <span className="exec-badge-dot"></span>
                         Sistema en vivo
                     </span>
                     <button
-                        onClick={handleLogout}
+                        onClick={() => setConfirmLogout(true)}
                         className="exec-logout-btn"
                         title="Cerrar sesión"
                     >
@@ -470,6 +528,12 @@ export default function AdminDashboard() {
             <main className="exec-content">
                 {renderContent()}
             </main>
+
+            <LogoutConfirmModal
+                open={confirmLogout}
+                onConfirm={() => { setConfirmLogout(false); handleLogout(); }}
+                onCancel={() => setConfirmLogout(false)}
+            />
         </div>
     );
 }

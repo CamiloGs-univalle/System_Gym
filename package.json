@@ -1,14 +1,17 @@
 {
     "name": "system_gym",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "private": true,
+    "description": "System Gym - Sistema de gestión de gimnasios",
+    "author": "Camilo Garcia",
     "main": "electron/main.js",
     "scripts": {
         "dev": "concurrently \"npm run vite\" \"npm run electron\"",
         "vite": "vite",
         "electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
         "build": "vite build",
-        "dist": "npm run build && electron-builder"
+        "dist": "npm run build && electron-builder",
+        "preparar-jre": "powershell -ExecutionPolicy Bypass -File scripts/preparar-jre.ps1"
     },
     "build": {
         "appId": "com.systemgym.app",
@@ -16,6 +19,19 @@
         "directories": {
             "output": "release"
         },
+        "extraResources": [
+            {
+                "from": "../backendGym/target/quarkus-app/",
+                "to": "backend/"
+            },
+            {
+                "from": "jre",
+                "to": "jre",
+                "filter": [
+                    "**/*"
+                ]
+            }
+        ],
         "win": {
             "target": "nsis"
         }

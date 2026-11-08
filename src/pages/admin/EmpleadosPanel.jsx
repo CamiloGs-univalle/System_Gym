@@ -11,10 +11,10 @@
 // ============================================
 
 import { useState, useMemo, useEffect } from "react";
-// Datos mock de frecuencia de pago (solo para referencia de etiquetas)
-import { frecuenciaPago } from "../../mock/empleados";
-// Datos mock de clientes (para mostrar relación entrenador-clientes)
-import { clientes } from "../../mock/clientes";
+// Frecuencias de pago (constantes de configuración)
+import { frecuenciaPago } from "../../constants/empleados";
+// Clientes reales para mostrar la relación entrenador-clientes
+import clientesService from "../../services/clientesService";
 // Componentes UI reutilizables
 import Button from "../../components/ui/Button";
 import DataTable from "../../components/admin/DataTable";
@@ -24,7 +24,8 @@ import {
     formatDate,
     formatPhone,
     getInitials,
-    getAvatarColor
+    getAvatarColor,
+    formatCurrencyInput
 } from "../../utils/formatters";
 // Servicio de empleados
 import empleadosService from "../../services/empleadosService";
@@ -39,6 +40,13 @@ export default function EmpleadosPanel() {
     // ============================================
 
     const [empleados, setEmpleados] = useState([]);
+    const [clientes, setClientes] = useState([]);
+
+    useEffect(() => {
+        clientesService.listar()
+            .then((lista) => setClientes(Array.isArray(lista) ? lista : []))
+            .catch(() => setClientes([]));
+    }, []);
     const [cargandoLista, setCargandoLista] = useState(true);
     const [modalAbierto, setModalAbierto] = useState(false);
     const [editando, setEditando] = useState(null);
@@ -58,6 +66,8 @@ export default function EmpleadosPanel() {
         salario: "",
         frecuenciaPago: "QUINCENAL",
         fechaIngreso: new Date().toISOString().split("T")[0],
+        tipoVinculacion: "LABORAL",
+        riesgoARL: 1,
         ultimoPago: "",
         proximoPago: "",
         activo: true,
@@ -199,7 +209,9 @@ export default function EmpleadosPanel() {
                 cargo: item.cargo,
                 salario: String(item.salario),
                 frecuenciaPago: item.frecuenciaPago,
-                fechaIngreso: item.fechaIngreso,
+                fechaIngreso: item.fechaIngreso || "",
+                tipoVinculacion: item.tipoVinculacion || "LABORAL",
+                riesgoARL: item.riesgoARL || 1,
                 ultimoPago: item.ultimoPago || "",
                 proximoPago: item.proximoPago || "",
                 activo: item.activo,
@@ -220,6 +232,8 @@ export default function EmpleadosPanel() {
                 salario: "",
                 frecuenciaPago: "QUINCENAL",
                 fechaIngreso: hoy,
+                tipoVinculacion: "LABORAL",
+                riesgoARL: 1,
                 ultimoPago: "",
                 proximoPago: proximo.toISOString().split("T")[0],
                 activo: true,
@@ -297,13 +311,22 @@ export default function EmpleadosPanel() {
                 return;
             }
 
-            if (form.password.length < 6) {
-                alert("❌ La contraseña debe tener al menos 6 caracteres");
-                return;
-            }
+            // Al editar la contraseña es opcional (vacía = conservar la actual)
+            const esContrasenaNueva = form.password.trim().length > 0;
 
-            if (form.password !== form.confirmPassword) {
-                alert("❌ Las contraseñas no coinciden");
+            if (esContrasenaNueva) {
+                if (form.password.length < 6) {
+                    alert("❌ La contraseña debe tener al menos 6 caracteres");
+                    return;
+                }
+
+                if (form.password !== form.confirmPassword) {
+                    alert("❌ Las contraseñas no coinciden");
+                    return;
+                }
+            } else if (!editando) {
+                // Al crear, la contraseña es obligatoria
+                alert("❌ La contraseña debe tener al menos 6 caracteres");
                 return;
             }
         }
@@ -320,6 +343,8 @@ export default function EmpleadosPanel() {
             salario: salarioNum,
             frecuenciaPago: form.frecuenciaPago,
             fechaIngreso: form.fechaIngreso || new Date().toISOString().split('T')[0],
+            tipoVinculacion: form.tipoVinculacion || 'LABORAL',
+            riesgoARL: Number(form.riesgoARL) || 1,
             ultimoPago: form.ultimoPago || '',
             proximoPago: form.proximoPago || '',
             activo: form.activo,
@@ -341,6 +366,17 @@ export default function EmpleadosPanel() {
                 setEmpleados(empleados.map(e =>
                     e.id === editando.id ? empleadoGuardado : e
                 ));
+
+                // Si el recepcionista cambió la contraseña, actualizarla en el usuario
+                if (form.cargo === "Recepcionista" && form.password.trim().length > 0) {
+                    const userId = editando.userId || empleadoGuardado.userId;
+                    if (userId) {
+                        await empleadosService.cambiarPassword(userId, form.password);
+                        console.log(`🔑 Contraseña del usuario ${userId} actualizada`);
+                    } else {
+                        console.warn("⚠️ No se pudo cambiar la contraseña: el empleado no tiene userId");
+                    }
+                }
             } else {
                 console.log("📝 Creando nuevo empleado...");
                 empleadoGuardado = await empleadosService.crear(data);
@@ -401,11 +437,13 @@ export default function EmpleadosPanel() {
         const map = {};
         empleados.forEach(e => {
             if (e.cargo === "Entrenador") {
-                map[e.nombre] = clientes.filter(c => c.entrenador === e.nombre);
+                map[e.nombre] = clientes.filter(c =>
+                    (c.entrenadorId != null && (c.entrenadorId === e.id || c.entrenadorId === e.userId))
+                    || c.entrenador === e.nombre);
             }
         });
         return map;
-    }, [empleados]);
+    }, [empleados, clientes]);
 
     const stats = useMemo(() => ({
         total: empleados.length,
@@ -589,9 +627,10 @@ export default function EmpleadosPanel() {
                                 </label>
                                 <input
                                     className="campo-input"
-                                    type="number"
-                                    value={form.salario}
-                                    onChange={e => setForm({ ...form, salario: e.target.value })}
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={formatCurrencyInput(form.salario)}
+                                    onChange={e => setForm({ ...form, salario: e.target.value.replace(/[^0-9]/g, '') })}
                                     placeholder="0"
                                     disabled={cargando}
                                 />
@@ -613,10 +652,46 @@ export default function EmpleadosPanel() {
                                 </select>
                             </div>
 
+                            {/* Tipo de vinculación: define si se pagan prestaciones y seguridad social */}
+                            <div className="modal-campo">
+                                <label>
+                                    <span className="campo-label">Tipo de vinculación</span>
+                                </label>
+                                <select
+                                    className="campo-input"
+                                    value={form.tipoVinculacion}
+                                    onChange={e => setForm({ ...form, tipoVinculacion: e.target.value })}
+                                    disabled={cargando}
+                                >
+                                    <option value="LABORAL">Contrato laboral (con prestaciones)</option>
+                                    <option value="PRESTACION_SERVICIOS">Prestación de servicios (honorarios)</option>
+                                </select>
+                            </div>
+
+                            {form.tipoVinculacion === "LABORAL" && (
+                                <div className="modal-campo">
+                                    <label>
+                                        <span className="campo-label">Riesgo ARL</span>
+                                    </label>
+                                    <select
+                                        className="campo-input"
+                                        value={form.riesgoARL}
+                                        onChange={e => setForm({ ...form, riesgoARL: Number(e.target.value) })}
+                                        disabled={cargando}
+                                    >
+                                        <option value={1}>Riesgo 1 (recepción, administración)</option>
+                                        <option value={2}>Riesgo 2 (entrenadores)</option>
+                                        <option value={3}>Riesgo 3</option>
+                                        <option value={4}>Riesgo 4</option>
+                                        <option value={5}>Riesgo 5</option>
+                                    </select>
+                                </div>
+                            )}
+
                             {/* Campo 7: Fecha ingreso */}
                             <div className="modal-campo">
                                 <label>
-                                    <span className="campo-label">Fecha ingreso</span>
+                                    <span className="campo-label">Fecha de ingreso (base de prima, cesantías y vacaciones)</span>
                                 </label>
                                 <input
                                     className="campo-input"

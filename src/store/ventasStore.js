@@ -85,17 +85,9 @@ export const calcularResumen = (ventas) => {
 
   // Procesar cada venta
   ventas.forEach(v => {
-    // ✅ OBTENER EL TOTAL CORRECTAMENTE
-    // El total puede estar en diferentes lugares según la estructura del backend
     const total = v.total || v.amount || v.totalAmount || v.subtotal || 0;
-    
-    // ✅ OBTENER EL MÉTODO DE PAGO
     const metodo = v.metodoPago || v.paymentMethod || v.payment || 'efectivo';
-    
-    // ✅ OBTENER EL TIPO DE VENTA
     const tipo = v.tipo || v.saleType || v.type || 'producto';
-    
-    console.log(`📊 Procesando venta ${v.id}: total=${total}, metodo=${metodo}, tipo=${tipo}`);
 
     // Sumar por tipo
     const tipoLower = tipo.toLowerCase();
@@ -109,7 +101,6 @@ export const calcularResumen = (ventas) => {
       totalDias += total;
       countDias++;
     } else {
-      // Si no se reconoce, asumir producto
       totalProductos += total;
       countProductos++;
     }
@@ -123,12 +114,10 @@ export const calcularResumen = (ventas) => {
     } else if (metodoLower === 'tarjeta' || metodoLower === 'card') {
       tarjeta += total;
     } else {
-      // Si no se reconoce, asumir efectivo
       efectivo += total;
     }
   });
 
-  // Calcular total general
   const totalGeneral = totalProductos + totalMensualidades + totalDias;
   const countTotal = countProductos + countMensualidades + countDias;
 
@@ -139,11 +128,7 @@ export const calcularResumen = (ventas) => {
       try {
         const partes = v.hora.split(':');
         let hora = parseInt(partes[0]);
-        
-        // Convertir a formato 12h para el índice
-        if (hora >= 12) {
-          hora = hora - 12;
-        }
+        if (hora >= 12) hora = hora - 12;
         if (hora >= 7 && hora <= 15) {
           const idx = hora - 7;
           const total = v.total || v.amount || 0;
@@ -153,20 +138,6 @@ export const calcularResumen = (ventas) => {
         // Ignorar errores de parseo
       }
     }
-  });
-
-  console.log('📊 Resumen calculado:', {
-    totalGeneral,
-    totalProductos,
-    totalMensualidades,
-    totalDias,
-    efectivo,
-    transferencia,
-    tarjeta,
-    countProductos,
-    countMensualidades,
-    countDias,
-    countTotal
   });
 
   return {
@@ -186,7 +157,7 @@ export const calcularResumen = (ventas) => {
 };
 
 // ============================================================
-// STORE DE VENTAS
+// CREAR EL STORE CON ZUSTAND
 // ============================================================
 
 export const useVentasStore = create(
@@ -210,65 +181,36 @@ export const useVentasStore = create(
       // ACCIONES
       // --------------------------------------------------------
 
-      /**
-       * Carga las ventas del día desde el backend.
-       * 
-       * @async
-       */
       async cargarVentas() {
         set({ loading: true, error: null });
         try {
-          console.log('📊 Cargando ventas del día...');
           const response = await ventasService.ventasHoy();
-          console.log('📥 Respuesta del backend:', response);
-          
-          // ✅ EXTRAER DATOS CORRECTAMENTE
           const data = extraerDatos(response);
-          console.log('📦 Datos extraídos:', data);
-          console.log('📦 Primer elemento:', data[0]);
           
-          // Formatear ventas para el frontend
           const ventasFormateadas = data.map(v => {
-            // ✅ Extraer el total de donde sea que esté
             const total = v.total || v.amount || v.totalAmount || v.subtotal || v.price || 0;
-            
-            // ✅ Extraer el método de pago
             const metodoPago = v.paymentMethod || v.metodoPago || v.payment || 'efectivo';
-            
-            // ✅ Extraer el tipo
             const tipo = v.saleType || v.tipo || v.type || 'producto';
-            
-            // ✅ Extraer la hora
             const hora = v.createdAt || v.date || v.fecha || v.createdDate;
             const horaFormateada = hora 
               ? new Date(hora).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
               : '--:--';
             
-            // ✅ Extraer la descripción
-            const descripcion = v.description || v.descripcion || v.client?.name || v.clientName || `Venta #${v.id}`;
-            
-            // ✅ Extraer el cliente
-            const cliente = v.client?.name || v.clientName || null;
-            
-            console.log(`📝 Venta #${v.id}: total=${total}, metodo=${metodoPago}, tipo=${tipo}`);
-            
             return {
               id: v.id,
               hora: horaFormateada,
-              descripcion: descripcion,
-              total: total, // ✅ Asegurar que el total se guarde correctamente
+              descripcion: v.description || v.descripcion || v.client?.name || v.clientName || `Venta #${v.id}`,
+              total: total,
               metodoPago: metodoPago.toLowerCase(),
               tipo: ventasService.mapearTipoVenta(tipo),
-              cliente: cliente,
+              cliente: v.client?.name || v.clientName || null,
               items: v.items || [],
               createdAt: v.createdAt || v.createdDate || v.date,
-              original: v // Guardar datos originales por si acaso
+              original: v
             };
           });
           
           set({ ventas: ventasFormateadas, loading: false });
-          console.log('✅ Ventas cargadas:', ventasFormateadas.length);
-          console.log('✅ Total general:', ventasFormateadas.reduce((sum, v) => sum + v.total, 0));
           return ventasFormateadas;
         } catch (error) {
           console.error('❌ Error cargando ventas:', error);
@@ -277,27 +219,14 @@ export const useVentasStore = create(
         }
       },
 
-      /**
-       * Carga las ventas de un turno específico.
-       * 
-       * @async
-       * @param {number} turnoId - ID del turno
-       */
       async cargarVentasPorTurno(turnoId) {
         set({ loading: true, error: null });
         try {
-          console.log(`📊 Cargando ventas del turno ${turnoId}...`);
           const response = await ventasService.ventasPorTurno(turnoId);
-          console.log('📥 Respuesta del backend:', response);
-          
-          // ✅ EXTRAER DATOS CORRECTAMENTE
           const data = extraerDatos(response);
-          console.log('📦 Datos extraídos:', data);
           
           const ventasFormateadas = data.map(v => {
-            // ✅ Extraer el total de donde sea que esté
             const total = v.total || v.amount || v.totalAmount || v.subtotal || v.price || 0;
-            
             const metodoPago = v.paymentMethod || v.metodoPago || v.payment || 'efectivo';
             const tipo = v.saleType || v.tipo || v.type || 'producto';
             const hora = v.createdAt || v.date || v.fecha;
@@ -320,8 +249,6 @@ export const useVentasStore = create(
           });
           
           set({ ventas: ventasFormateadas, loading: false });
-          console.log('✅ Ventas del turno cargadas:', ventasFormateadas.length);
-          console.log('✅ Total general:', ventasFormateadas.reduce((sum, v) => sum + v.total, 0));
           return ventasFormateadas;
         } catch (error) {
           console.error(`❌ Error cargando ventas del turno ${turnoId}:`, error);
@@ -330,15 +257,7 @@ export const useVentasStore = create(
         }
       },
 
-      /**
-       * Agrega una venta al estado local (usado después de registrar una venta).
-       * 
-       * @param {Object} venta - Datos de la venta
-       */
       agregarVenta(venta) {
-        console.log('📝 Agregando venta al store:', venta);
-        
-        // ✅ Extraer el total correctamente
         const total = venta.total || venta.amount || venta.totalAmount || 0;
         
         const ventaFormateada = {
@@ -357,16 +276,8 @@ export const useVentasStore = create(
         set(state => ({
           ventas: [...state.ventas, ventaFormateada]
         }));
-        
-        console.log('✅ Venta agregada al store. Total ventas:', get().ventas.length);
-        console.log('✅ Total de la venta agregada:', total);
       },
 
-      /**
-       * Establece el turno activo.
-       * 
-       * @param {Object} turno - Datos del turno
-       */
       setTurnoActivo(turno) {
         set({ 
           turnoActivo: turno,
@@ -376,14 +287,8 @@ export const useVentasStore = create(
             fecha: new Date().toISOString()
           }
         });
-        console.log('✅ Turno activo establecido:', turno?.id || 'null');
       },
 
-      /**
-       * Cierra la jornada con los datos de cuadre.
-       * 
-       * @param {Object} data - Datos del cierre
-       */
       cerrarJornada(data) {
         const fecha = new Date().toLocaleDateString('es-CO', {
           weekday: 'long',
@@ -411,13 +316,8 @@ export const useVentasStore = create(
             fecha: new Date().toISOString()
           }
         });
-        
-        console.log('✅ Jornada cerrada:', cierreData);
       },
 
-      /**
-       * Reinicia el estado para una nueva jornada.
-       */
       reiniciarJornada() {
         set({
           ventas: [],
@@ -429,48 +329,26 @@ export const useVentasStore = create(
           },
           error: null
         });
-        console.log('✅ Jornada reiniciada');
       },
 
-      /**
-       * Obtiene el resumen de ventas calculado.
-       * 
-       * @returns {Object} Resumen de ventas
-       */
       getResumen() {
         return calcularResumen(get().ventas);
       },
 
-      /**
-       * Obtiene la cantidad de ventas.
-       * 
-       * @returns {number} Cantidad de ventas
-       */
       getCantidadVentas() {
         return get().ventas.length;
       },
 
-      /**
-       * Obtiene el total general de ventas.
-       * 
-       * @returns {number} Total general
-       */
       getTotalGeneral() {
         const resumen = calcularResumen(get().ventas);
         return resumen.totalGeneral;
       },
 
-      /**
-       * Limpia los errores.
-       */
       clearError() {
         set({ error: null });
       }
     }),
     {
-      // --------------------------------------------------------
-      // CONFIGURACIÓN DE PERSISTENCIA
-      // --------------------------------------------------------
       name: 'gymcore-ventas',
       partialize: (state) => ({
         ventas: state.ventas,

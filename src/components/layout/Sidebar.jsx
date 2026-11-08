@@ -6,14 +6,19 @@ export default function Sidebar({ isOpen }) {
 
   const handleLogout = () => {
     logout();
-    window.location.href = "/";
+    // Navegación solo cliente (funciona en file:// y http)
+    if (window.location.hash) {
+      window.location.hash = "/login";
+    } else {
+      window.location.reload();
+    }
   };
 
   return (
     <aside className={`sidebar ${isOpen ? "open" : "closed"}`}>
       <div className="sidebar-brand">
         <span className="brand-icon">💪</span>
-        <span className="brand-name">GYM SYSTEM</span>
+        <span className="brand-name">SYSTEM GYM</span>
       </div>
 
       <nav className="sidebar-nav">

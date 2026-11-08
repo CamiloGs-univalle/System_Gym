@@ -1,4 +1,4 @@
-# GymCore — Flujos del Sistema
+# System Gym — Flujos del Sistema
 
 > Descripción de los flujos de navegación, lógica de negocio y estados clave de cada módulo.
 

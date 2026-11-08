@@ -1,14 +1,13 @@
 // src/store/ventasStore.jsx
 import { useState, useCallback, createContext, useContext } from "react";
-import { ventasDelDia } from "../mock/ventas";
 
 const VentasContext = createContext(null);
 
 export function VentasProvider({ children }) {
-  const [ventas, setVentas] = useState(ventasDelDia);
+  const [ventas, setVentas] = useState([]);
   const [jornada, setJornada] = useState({
     inicio: "07:00",
-    recepcionista: "Ana López",
+    recepcionista: "",
     saldoInicial: 0,
     cerrada: false,
     cierreData: null,

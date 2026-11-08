@@ -1,2 +1,10 @@
 node_modules
 node_modules
+
+# Java incluido en el instalador (se descarga con npm run preparar-jre)
+jre/
+
+# Variables locales y compilados
+.env
+release/
+dist/

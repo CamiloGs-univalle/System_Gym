@@ -82,6 +82,61 @@
   color: var(--gray-800);
 }
 
+/* Chip de estado del turno activo (en el header) */
+.recepcion-turno-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  width: fit-content;
+  flex-wrap: wrap;
+}
+
+.recepcion-turno-chip.sincronizado {
+  background: #ecfdf5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+
+.recepcion-turno-chip.local {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.recepcion-turno-chip.sinturno {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.recepcion-turno-sync {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.recepcion-turno-abrir {
+  border: none;
+  background: #3b82f6;
+  color: white;
+  padding: 4px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: var(--transition);
+}
+
+.recepcion-turno-abrir:hover {
+  background: #2563eb;
+}
+
 /* Variante usada cuando el bloque usuario va junto al logout
    (composición alternativa del topbar) */
 .recepcion-usuario {

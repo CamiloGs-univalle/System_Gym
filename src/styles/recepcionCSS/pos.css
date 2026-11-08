@@ -78,6 +78,23 @@
   font-weight: 500;
   color: var(--gray-900);
   transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.categoria-btn-count {
+  background: var(--gray-100);
+  color: var(--gray-600);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.categoria-btn.active .categoria-btn-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
 }
 
 .categoria-btn:hover {
@@ -124,11 +141,24 @@
   margin-bottom: 4px;
 }
 
+.producto-detalles {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+
 .producto-nombre {
   font-size: 13px;
   font-weight: 600;
   color: var(--gray-700);
   text-align: center;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .producto-precio {
@@ -1072,4 +1102,208 @@
   .metodo-toggle-btn .metodo-icon {
     font-size: 12px;
   }
+}
+
+/* ============================================================
+   STREAK / FLAMA - Racha de constancia del cliente
+   ============================================================ */
+
+.streak-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  margin: 6px 0;
+  transition: all 0.3s ease;
+}
+
+.streak-none {
+  background: #f3f4f6;
+  border: 1px dashed #d1d5db;
+  color: #9ca3af;
+}
+
+.streak-nivel-1 { background: linear-gradient(135deg, #fff7ed, #fed7aa); border: 1px solid #fb923c; }
+.streak-nivel-2 { background: linear-gradient(135deg, #fffbeb, #fde68a); border: 1px solid #f59e0b; }
+.streak-nivel-3 { background: linear-gradient(135deg, #fef2f2, #fecaca); border: 1px solid #ef4444; }
+.streak-nivel-4 { background: linear-gradient(135deg, #fef2f2, #fca5a5); border: 1px solid #dc2626; }
+.streak-nivel-5 { background: linear-gradient(135deg, #f5f3ff, #ddd6fe); border: 1px solid #7c3aed; }
+
+.streak-fire {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.streak-animating .streak-fire {
+  animation: firePulse 0.8s ease-in-out 2;
+}
+
+.streak-info {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.streak-count {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.streak-label {
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+.streak-nombre {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.streak-nivel-1 .streak-nombre { color: #ea580c; }
+.streak-nivel-2 .streak-nombre { color: #d97706; }
+.streak-nivel-3 .streak-nombre { color: #dc2626; }
+.streak-nivel-4 .streak-nombre { color: #b91c1c; }
+.streak-nivel-5 .streak-nombre { color: #6d28d9; }
+
+.streak-barra {
+  flex: 1;
+  height: 4px;
+  background: rgba(0,0,0,0.08);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-left: 8px;
+}
+
+.streak-barra-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes firePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3) rotate(5deg); }
+}
+
+@keyframes fireShake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-8deg); }
+  75% { transform: rotate(8deg); }
+}
+
+/* ============================================================
+   MEMBRESIA BADGES
+   ============================================================ */
+
+.membresia-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin: 6px 0;
+  border-left: 4px solid;
+}
+
+.membresia-activa {
+  background: #f0fdf4;
+  border-color: #10b981;
+}
+
+.membresia-por_vencer {
+  background: #fffbeb;
+  border-color: #f59e0b;
+}
+
+.membresia-vencida, .membresia-mora {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
+
+.membresia-congelada, .membresia-pausada {
+  background: #eff6ff;
+  border-color: #3b82f6;
+}
+
+.membresia-sin {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.membresia-icon {
+  font-size: 1.3rem;
+}
+
+.membresia-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.membresia-info strong {
+  font-size: 0.85rem;
+}
+
+.membresia-info span {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.estado-activa { color: #10b981; font-weight: 600; }
+.estado-vencida, .estado-mora { color: #ef4444; font-weight: 600; }
+.estado-congelada { color: #3b82f6; font-weight: 600; }
+
+/* ============================================================
+   ACCIONES RAPIDAS
+   ============================================================ */
+
+.cliente-acciones-rapidas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.btn-accion-rapida {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-accion-rapida:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59,130,246,0.15);
+  transform: translateY(-1px);
+}
+
+.btn-accion-icono { font-size: 1.2rem; }
+.btn-accion-texto { font-size: 0.7rem; font-weight: 600; color: #374151; }
+.btn-accion-precio { font-size: 0.7rem; color: #059669; font-weight: 700; }
+
+.btn-pago-membresia {
+  border-style: dashed;
+  border-color: #10b981;
+}
+
+.cliente-placeholder {
+  text-align: center;
+  padding: 24px 16px;
+  color: #9ca3af;
+}
+
+.cliente-placeholder span {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 8px;
 }

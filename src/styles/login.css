@@ -154,7 +154,33 @@ body{
 
 .login-card h2{
     color:white;
-    margin-bottom:30px;
+    margin-bottom:4px;
+    font-size:26px;
+    letter-spacing:-0.5px;
+}
+
+.login-brand{
+    margin-bottom:28px;
+    text-align:center;
+}
+
+.login-brand .login-logo{
+    display:inline-flex;
+    width:64px;
+    height:64px;
+    align-items:center;
+    justify-content:center;
+    font-size:30px;
+    background:linear-gradient(135deg,#ff6b00,#ff8c00);
+    border-radius:18px;
+    box-shadow:0 8px 24px rgba(255,107,0,.35);
+    margin-bottom:14px;
+}
+
+.login-brand p{
+    color:#9ca3af;
+    font-size:13px;
+    margin-top:6px;
 }
 
 .form-group{

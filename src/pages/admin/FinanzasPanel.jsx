@@ -1,12 +1,19 @@
 // ============================================
-// FINANZAS PANEL - Con conexión al backend
+// FINANZAS PANEL - Contabilidad real con backend
+// - Reporte financiero del mes (ingresos, reserva nómina, egresos, neta)
+// - Distribución de los ingresos (nómina, mercancía, gastos, utilidad)
+// - Nómina (algoritmo de ahorro diario)
+// - Movimientos (egresos reales + ingresos de mercancía)
 // ============================================
 import { useState, useMemo, useEffect } from "react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-import { COP, formatDate } from "../../utils/formatters";
+import { COP, formatDate, formatCurrencyInput } from "../../utils/formatters";
 import { clientesService } from "../../services/clientesService";
 import { empleadosService } from "../../services/empleadosService";
+import ingresoService from "../../services/ingresoService";
+import finanzasService from "../../services/finanzasService";
+import { historialNominaService } from "../../services/nomina/nominaEngine";
 import useAuthStore from "../../store/authStore";
 
 const hoy = new Date().toISOString().split("T")[0];
@@ -20,19 +27,27 @@ const diasHastaFecha = (fechaStr) => {
     return Math.ceil((fecha - ahora) / (1000 * 60 * 60 * 24));
 };
 
+const extraer = (r, fallback = {}) => {
+    if (!r) return fallback;
+    if (r.data && typeof r.data === "object" && !Array.isArray(r.data)) return r.data;
+    return r;
+};
+
 export default function FinanzasPanel() {
     const [seccion, setSeccion] = useState("resumen");
     const [clientes, setClientes] = useState([]);
     const [empleados, setEmpleados] = useState([]);
+    const [egresos, setEgresos] = useState([]);
+    const [intakes, setIntakes] = useState([]);
+    const [reporte, setReporte] = useState(null);
     const [cargando, setCargando] = useState(true);
     const [modalEgreso, setModalEgreso] = useState(false);
-    const [formEgreso, setFormEgreso] = useState({ 
-        concepto: "", 
-        monto: "", 
-        categoria: "Servicios", 
-        fecha: hoy 
+    const [formEgreso, setFormEgreso] = useState({
+        concepto: "",
+        monto: "",
+        categoria: "Servicios",
+        fecha: hoy,
     });
-    const [egresosList, setEgresosList] = useState([]);
 
     const usuario = useAuthStore((state) => state.usuario);
 
@@ -44,18 +59,24 @@ export default function FinanzasPanel() {
     const cargarDatos = async () => {
         setCargando(true);
         try {
-            // Cargar clientes para obtener info de membresías
-            const clientesData = await clientesService.listar();
-            setClientes(clientesData);
+            const [reporteR, egresosR, intakesR] = await Promise.all([
+                finanzasService.reporteMes().catch(() => null),
+                ingresoService.listarEgresos().catch(() => []),
+                ingresoService.listarIngresos().catch(() => []),
+            ]);
+            setReporte(extraer(reporteR));
+            setEgresos(Array.isArray(egresosR) ? egresosR : []);
+            setIntakes(Array.isArray(intakesR) ? intakesR : []);
 
-            // Cargar empleados
-            const empleadosData = await empleadosService.listar();
-            setEmpleados(empleadosData);
+            try {
+                const clientesData = await clientesService.listar();
+                setClientes(clientesData);
+            } catch (e) { /* sin acceso */ }
 
-            // Cargar egresos desde localStorage (temporal)
-            const egresosGuardados = JSON.parse(localStorage.getItem('egresos') || '[]');
-            setEgresosList(egresosGuardados);
-
+            try {
+                const empleadosData = await empleadosService.listar();
+                setEmpleados(empleadosData);
+            } catch (e) { /* sin acceso */ }
         } catch (error) {
             console.error("❌ Error cargando datos financieros:", error);
         } finally {
@@ -63,55 +84,96 @@ export default function FinanzasPanel() {
         }
     };
 
-    // Calcular ingresos del mes desde clientes
+    const cargarMovimientos = async () => {
+        try {
+            const [egresosR, intakesR] = await Promise.all([
+                ingresoService.listarEgresos(),
+                ingresoService.listarIngresos(),
+            ]);
+            setEgresos(Array.isArray(egresosR) ? egresosR : []);
+            setIntakes(Array.isArray(intakesR) ? intakesR : []);
+        } catch (e) { console.error(e); }
+    };
+
+    // ============================================================
+    // CÁLCULOS DEL REPORTE
+    // ============================================================
+    const reporteMes = reporte || {};
+
+    const totalIngresos = reporteMes.grossRevenue ?? 0;
+    const ingresosMembresias = reporteMes.totalMembershipRevenue ?? 0;
+    const ingresosProductos = reporteMes.totalProductSalesRevenue ?? 0;
+    const ingresosDias = reporteMes.totalDailyTrainingRevenue ?? 0;
+    const reservaNomina = reporteMes.totalPayrollReserve ?? 0;
+    const totalEgresos = reporteMes.totalExpenses ?? 0;
+    const utilidad = reporteMes.netProfit ?? 0;
+    const liquidoNeto = reporteMes.netLiquidRevenue ?? 0;
+
+    // Distribución de los ingresos (%)
+    const distribucion = useMemo(() => {
+        const base = totalIngresos > 0 ? totalIngresos : 1;
+        const pReserva = (reservaNomina / base) * 100;
+        const pEgresos = (totalEgresos / base) * 100;
+        const pUtilidad = (utilidad / base) * 100;
+        return {
+            pReserva: Math.max(0, Math.min(100, pReserva)),
+            pEgresos: Math.max(0, Math.min(100, pEgresos)),
+            pUtilidad: Math.max(0, Math.min(100, pUtilidad)),
+        };
+    }, [totalIngresos, reservaNomina, totalEgresos, utilidad]);
+
+    // Ingresos por membresías (desglose desde clientes)
     const ingresosMensualidades = useMemo(() => {
-        const mes = mesActual;
-        const ingresos = clientes
-            .filter(c => c.mensualidad?.activa && c.fechaIngreso?.startsWith(mes))
+        return clientes
+            .filter(c => c.mensualidad?.activa && c.fechaIngreso?.startsWith(mesActual))
             .map(c => ({
                 id: c.id,
                 fecha: c.fechaIngreso,
-                monto: c.mensualidad?.precioMensual || 80000,
+                monto: c.mensualidad?.precioMensual || 0,
                 clienteNombre: c.nombre,
                 tipo: c.mensualidad?.tipo || "Mensual",
-                metodoPago: "Efectivo"
             }));
-        return ingresos;
     }, [clientes]);
 
-    const totalIngresosMem = useMemo(() =>
-        ingresosMensualidades.reduce((a, i) => a + i.monto, 0),
-        [ingresosMensualidades]);
+    // Egresos e ingresos de mercancía del mes
+    const egresosMes = useMemo(() =>
+        egresos.filter(e => (e.expenseDate || "").startsWith(mesActual)),
+        [egresos]);
 
-    // Ingresos por productos (mock)
-    const ingresosProductos = useMemo(() => [
-        { id: 1, fecha: hoy, total: 45000, producto: "Proteína Whey", cantidad: 2 },
-        { id: 2, fecha: hoy, total: 32000, producto: "Creatina", cantidad: 1 }
-    ], []);
-
-    const totalIngresosProd = useMemo(() =>
-        ingresosProductos.reduce((a, i) => a + i.total, 0),
-        [ingresosProductos]);
-
-    const totalIngresos = totalIngresosMem + totalIngresosProd;
-
-    const totalEgresos = useMemo(() =>
-        egresosList.filter(e => e.fecha?.startsWith(mesActual)).reduce((a, e) => a + (e.monto || 0), 0),
-        [egresosList]);
-
-    const utilidad = totalIngresos - totalEgresos;
+    const intakesMes = useMemo(() =>
+        intakes.filter(i => i.status === "CONFIRMED" && (i.recordedAt || "").startsWith(mesActual)),
+        [intakes]);
 
     // Cálculo de nómina
     const calcularAhorroDiario = (empleado) => {
-        const diasPeriodo = empleado.frecuenciaPago === "QUINCENAL" ? 15 : 30;
-        return Math.round((empleado.salario || 0) / diasPeriodo);
+        if (empleado.dailyAccruedCost && empleado.dailyAccruedCost > 0) {
+            return empleado.dailyAccruedCost;
+        }
+        // El salario registrado es MENSUAL: el costo diario es salario / 30 (también si se paga quincenal)
+        return Math.round((empleado.salario || 0) / 30);
+    };
+
+    const obtenerInfoPago = (empleado) => {
+        const ultimoPago = historialNominaService.ultimoPagoEmpleado(empleado.id);
+        const proximaFecha = historialNominaService.proximaFechaPago(empleado.id, empleado);
+        return {
+            ultimoPago: ultimoPago?.fechaPago || empleado.ultimoPago || null,
+            proximoPago: proximaFecha || empleado.proximoPago || null,
+            pagosRealizados: historialNominaService.pagosEmpleado(empleado.id).length,
+        };
     };
 
     const calcularAcumulado = (empleado) => {
-        const ultimoPago = empleado.ultimoPago ? new Date(empleado.ultimoPago) : new Date();
+        const info = obtenerInfoPago(empleado);
+        const fechaBase = info.ultimoPago
+            ? new Date(info.ultimoPago)
+            : (empleado.fechaIngreso ? new Date(empleado.fechaIngreso) : new Date());
         const hoyDate = new Date();
-        const diasTranscurridos = Math.ceil((hoyDate - ultimoPago) / (1000 * 60 * 60 * 24));
+        fechaBase.setHours(0, 0, 0, 0);
+        hoyDate.setHours(0, 0, 0, 0);
+        const diasTranscurridos = Math.ceil((hoyDate - fechaBase) / (1000 * 60 * 60 * 24));
         const ahorroDiario = calcularAhorroDiario(empleado);
+        const diasMaximos = empleado.frecuenciaPago === "QUINCENAL" ? 15 : 30;
         return Math.min(ahorroDiario * Math.max(0, diasTranscurridos), empleado.salario || 0);
     };
 
@@ -123,34 +185,45 @@ export default function FinanzasPanel() {
         .filter(e => e.activo)
         .reduce((a, e) => a + calcularAcumulado(e), 0);
 
-    // Guardar egreso
-    const guardarEgreso = () => {
+    // Guardar egreso (backend)
+    const guardarEgreso = async () => {
         if (!formEgreso.concepto.trim() || !formEgreso.monto) {
             alert("❌ Completa todos los campos");
             return;
         }
-
-        const nuevoEgreso = {
-            id: Date.now(),
-            concepto: formEgreso.concepto,
-            monto: parseInt(formEgreso.monto),
-            fecha: formEgreso.fecha,
-            categoria: formEgreso.categoria,
-            empleadoId: null,
-        };
-
-        const nuevosEgresos = [...egresosList, nuevoEgreso];
-        setEgresosList(nuevosEgresos);
-        localStorage.setItem('egresos', JSON.stringify(nuevosEgresos));
-        
-        setModalEgreso(false);
-        setFormEgreso({ concepto: "", monto: "", categoria: "Servicios", fecha: hoy });
-        alert("✅ Egreso registrado correctamente");
+        try {
+            await ingresoService.registrarEgreso({
+                concept: formEgreso.concepto.trim(),
+                category: formEgreso.categoria,
+                amount: parseInt(formEgreso.monto),
+                expenseDate: formEgreso.fecha,
+                employeeId: null,
+                intakeId: null,
+            });
+            setModalEgreso(false);
+            setFormEgreso({ concepto: "", monto: "", categoria: "Servicios", fecha: hoy });
+            await cargarMovimientos();
+            alert("✅ Egreso registrado correctamente");
+        } catch (e) {
+            alert(`❌ Error: ${e.response?.data?.message || e.message}`);
+        }
     };
 
     if (cargando) {
         return <div style={{ textAlign: 'center', padding: '40px' }}>Cargando datos financieros...</div>;
     }
+
+    const Barra = ({ label, valor, pct, color }) => (
+        <div style={{ marginBottom: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "4px" }}>
+                <span style={{ fontWeight: 600, color: "#334155" }}>{label}</span>
+                <span style={{ color: "#475569" }}>{COP(valor)} · <b>{pct.toFixed(1)}%</b></span>
+            </div>
+            <div style={{ background: "#e2e8f0", borderRadius: "8px", height: "12px", overflow: "hidden" }}>
+                <div style={{ width: `${pct}%`, background: color, height: "100%", borderRadius: "8px", transition: "width .4s" }} />
+            </div>
+        </div>
+    );
 
     return (
         <div className="finanzas-container">
@@ -192,31 +265,56 @@ export default function FinanzasPanel() {
                             <span className="fin-card-icon">📈</span>
                             <div>
                                 <span className="fin-card-valor">{COP(utilidad)}</span>
-                                <span className="fin-card-label">Utilidad neta</span>
+                                <span className="fin-card-label">Ganancia neta</span>
                             </div>
                         </div>
                         <div className="fin-card fin-blue">
                             <span className="fin-card-icon">🏋️</span>
                             <div>
-                                <span className="fin-card-valor">{COP(totalIngresosMem)}</span>
+                                <span className="fin-card-valor">{COP(ingresosMembresias)}</span>
                                 <span className="fin-card-label">Por membresías</span>
                             </div>
                         </div>
                         <div className="fin-card fin-blue">
                             <span className="fin-card-icon">🛍️</span>
                             <div>
-                                <span className="fin-card-valor">{COP(totalIngresosProd)}</span>
+                                <span className="fin-card-valor">{COP(ingresosProductos)}</span>
                                 <span className="fin-card-label">Por productos</span>
                             </div>
                         </div>
-                        <div className="fin-card fin-yellow">
-                            <span className="fin-card-icon">👷</span>
+                        <div className="fin-card fin-blue">
+                            <span className="fin-card-icon">🎟️</span>
                             <div>
-                                <span className="fin-card-valor">{COP(totalAhorradoHoy)}</span>
-                                <span className="fin-card-label">Acumulado nómina</span>
+                                <span className="fin-card-valor">{COP(ingresosDias)}</span>
+                                <span className="fin-card-label">Por días individuales</span>
+                            </div>
+                        </div>
+                        <div className="fin-card fin-yellow">
+                            <span className="fin-card-icon">🏦</span>
+                            <div>
+                                <span className="fin-card-valor">{COP(reservaNomina)}</span>
+                                <span className="fin-card-label">Reserva de nómina</span>
+                            </div>
+                        </div>
+                        <div className="fin-card fin-blue">
+                            <span className="fin-card-icon">💧</span>
+                            <div>
+                                <span className="fin-card-valor">{COP(liquidoNeto)}</span>
+                                <span className="fin-card-label">Ingreso líquido neto</span>
                             </div>
                         </div>
                     </div>
+
+                    {/* DISTRIBUCIÓN DE LOS INGRESOS */}
+                    <Card title="Distribución de los ingresos del mes" icon="🧮" className="fin-desglose-card">
+                        <Barra label="🏦 Reserva para nómina" valor={reservaNomina} pct={distribucion.pReserva} color="#f59e0b" />
+                        <Barra label="📉 Egresos (mercancía y gastos)" valor={totalEgresos} pct={distribucion.pEgresos} color="#ef4444" />
+                        <Barra label="📈 Ganancia neta del negocio" valor={utilidad} pct={distribucion.pUtilidad} color="#10b981" />
+                        <p style={{ fontSize: "12px", color: "#64748b", margin: "8px 0 0" }}>
+                            💡 Con esta distribución sabes cuánto dejar reservado para pagar empleados,
+                            cuánto se fue en mercancía/gastos y cuánto queda realmente como ganancia.
+                        </p>
+                    </Card>
 
                     <div className="finanzas-row">
                         <Card title="Membresías del mes" icon="🏋️" className="fin-desglose-card">
@@ -237,17 +335,22 @@ export default function FinanzasPanel() {
                             </div>
                         </Card>
 
-                        <Card title="Ventas de productos" icon="🛍️" className="fin-desglose-card">
+                        <Card title="Ventas de productos (mes)" icon="🛍️" className="fin-desglose-card">
                             <div className="fin-lista">
-                                {ingresosProductos.map(i => (
-                                    <div key={i.id} className="fin-item">
-                                        <div>
-                                            <span className="fin-item-nombre">{i.producto}</span>
-                                            <span className="fin-item-sub">x{i.cantidad} · {i.fecha}</span>
-                                        </div>
-                                        <span className="fin-item-monto green">{COP(i.total)}</span>
+                                <div className="fin-item">
+                                    <div>
+                                        <span className="fin-item-nombre">Total ventas de productos</span>
+                                        <span className="fin-item-sub">Consolidado del reporte financiero</span>
                                     </div>
-                                ))}
+                                    <span className="fin-item-monto green">{COP(ingresosProductos)}</span>
+                                </div>
+                                <div className="fin-item">
+                                    <div>
+                                        <span className="fin-item-nombre">Ingresos por días individuales</span>
+                                        <span className="fin-item-sub">Pases de entrenamiento</span>
+                                    </div>
+                                    <span className="fin-item-monto green">{COP(ingresosDias)}</span>
+                                </div>
                             </div>
                         </Card>
                     </div>
@@ -273,6 +376,11 @@ export default function FinanzasPanel() {
                             <span className="nom-valor">{COP(totalAhorradoHoy)}</span>
                             <span className="nom-label">Acumulado hasta hoy</span>
                         </div>
+                        <div className="nom-card">
+                            <span className="nom-icon">🪙</span>
+                            <span className="nom-valor">{COP(reservaNomina)}</span>
+                            <span className="nom-label">Reserva registrada (mes)</span>
+                        </div>
                     </div>
 
                     <Card title="Estado de Nómina" icon="👷" className="nomina-card">
@@ -292,7 +400,8 @@ export default function FinanzasPanel() {
                                 </thead>
                                 <tbody>
                                     {empleados.filter(e => e.activo).map(e => {
-                                        const diasRestantes = diasHastaFecha(e.proximoPago);
+                                        const info = obtenerInfoPago(e);
+                                        const diasRestantes = diasHastaFecha(info.proximoPago);
                                         const acumulado = calcularAcumulado(e);
                                         const porcentaje = Math.min((acumulado / (e.salario || 1)) * 100, 100);
                                         return (
@@ -308,12 +417,20 @@ export default function FinanzasPanel() {
                                                 <td><span className="cargo-badge">{e.cargo}</span></td>
                                                 <td className="text-green fw-bold">{COP(e.salario)}</td>
                                                 <td><span className="membresia-badge">{e.frecuenciaPago === "QUINCENAL" ? "Quincenal" : "Mensual"}</span></td>
-                                                <td className="text-small">{formatDate(e.ultimoPago)}</td>
-                                                <td className="text-small">{formatDate(e.proximoPago)}</td>
+                                                <td className="text-small">{info.ultimoPago ? formatDate(info.ultimoPago) : "—"}</td>
+                                                <td className="text-small">{info.proximoPago ? formatDate(info.proximoPago) : "—"}</td>
                                                 <td>
-                                                    <span className={`estado-badge ${diasRestantes <= 3 ? "badge-red" : diasRestantes <= 7 ? "badge-yellow" : "badge-green"}`}>
-                                                        {diasRestantes === 0 ? "¡Hoy!" : `${diasRestantes}d`}
-                                                    </span>
+                                                    {!info.proximoPago ? (
+                                                        <span className="estado-badge badge-yellow">Sin pago</span>
+                                                    ) : diasRestantes === 0 ? (
+                                                        <span className="estado-badge badge-red">¡Hoy!</span>
+                                                    ) : diasRestantes < 0 ? (
+                                                        <span className="estado-badge badge-red">Vencido</span>
+                                                    ) : (
+                                                        <span className={`estado-badge ${diasRestantes <= 3 ? "badge-red" : diasRestantes <= 7 ? "badge-yellow" : "badge-green"}`}>
+                                                            {diasRestantes}d
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td>
                                                     <div className="nomina-progreso">
@@ -337,7 +454,7 @@ export default function FinanzasPanel() {
             {seccion === "movimientos" && (
                 <div className="movimientos-container">
                     <div className="movimientos-toolbar">
-                        <h3 className="movimientos-titulo">📋 Todos los movimientos del mes</h3>
+                        <h3 className="movimientos-titulo">📋 Movimientos del mes</h3>
                         <Button variant="primary" onClick={() => setModalEgreso(true)}>
                             ➕ Registrar Egreso
                         </Button>
@@ -354,26 +471,29 @@ export default function FinanzasPanel() {
                                 <span className="mov-monto text-green">+{COP(i.monto)}</span>
                             </div>
                         ))}
-                        {ingresosProductos.map(i => (
-                            <div key={`prod-${i.id}`} className="movimiento-item movimiento-ingreso">
-                                <span className="mov-icon">🛍️</span>
+                        {intakesMes.map(i => (
+                            <div key={`in-${i.id}`} className="movimiento-item movimiento-egreso">
+                                <span className="mov-icon">📥</span>
                                 <div className="mov-info">
-                                    <span className="mov-concepto">{i.producto} x{i.cantidad}</span>
-                                    <span className="mov-sub">{i.fecha}</span>
+                                    <span className="mov-concepto">Mercancía: {i.productName} x{i.quantity}</span>
+                                    <span className="mov-sub">{i.recordedAt?.slice(0, 10)} · Inventario</span>
                                 </div>
-                                <span className="mov-monto text-green">+{COP(i.total)}</span>
+                                <span className="mov-monto text-red">-{COP(i.totalCost)}</span>
                             </div>
                         ))}
-                        {egresosList.filter(e => e.fecha?.startsWith(mesActual)).map(e => (
+                        {egresosMes.map(e => (
                             <div key={`eg-${e.id}`} className="movimiento-item movimiento-egreso">
                                 <span className="mov-icon">📉</span>
                                 <div className="mov-info">
-                                    <span className="mov-concepto">{e.concepto}</span>
-                                    <span className="mov-sub">{e.fecha} · {e.categoria}</span>
+                                    <span className="mov-concepto">{e.concept}</span>
+                                    <span className="mov-sub">{e.expenseDate} · {e.category}</span>
                                 </div>
-                                <span className="mov-monto text-red">-{COP(e.monto)}</span>
+                                <span className="mov-monto text-red">-{COP(e.amount)}</span>
                             </div>
                         ))}
+                        {ingresosMensualidades.length === 0 && intakesMes.length === 0 && egresosMes.length === 0 && (
+                            <p className="fin-vacio">Sin movimientos este mes</p>
+                        )}
                     </div>
                 </div>
             )}
@@ -399,8 +519,8 @@ export default function FinanzasPanel() {
                             </div>
                             <div className="modal-campo">
                                 <label><span className="campo-label">Monto ($)</span></label>
-                                <input className="campo-input" type="number" value={formEgreso.monto}
-                                    onChange={e => setFormEgreso({ ...formEgreso, monto: e.target.value })}
+                                <input className="campo-input" type="text" inputMode="numeric" value={formatCurrencyInput(formEgreso.monto)}
+                                    onChange={e => setFormEgreso({ ...formEgreso, monto: e.target.value.replace(/[^0-9]/g, '') })}
                                     placeholder="0" />
                             </div>
                             <div className="modal-campo">

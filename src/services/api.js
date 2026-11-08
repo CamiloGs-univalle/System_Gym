@@ -10,7 +10,12 @@ import axios from 'axios';
 // CONFIGURACIÓN DE LA URL BASE
 // ============================================================
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+// En la app de escritorio, Electron entrega (vía preload) el puerto del backend,
+// que se elige libre en cada arranque, y la llave privada de la app.
+const appConfig = (typeof window !== 'undefined' && window.systemGym?.getConfig?.()) || {};
+
+const API_URL = appConfig.apiUrl || import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+const APP_KEY = appConfig.appKey || null;
 
 // ============================================================
 // LOG PARA DEPURACIÓN
@@ -26,7 +31,10 @@ console.log('🚀 ========================================');
 
 const api = axios.create({
   baseURL: API_URL,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    ...(APP_KEY ? { 'X-App-Key': APP_KEY } : {}),
+  },
   timeout: 15000,
 });
 
@@ -90,11 +98,16 @@ api.interceptors.response.use(
     // ==========================================================
     
     if (error.response?.status === 401) {
-      console.warn('⚠️ Sesión expirada, redirigiendo a login...');
+      console.warn('⚠️ Sesión expirada, volviendo a login...');
+      // ✅ En Electron la app carga por file://, así que NO podemos navegar
+      // a "/login" con location.href (no existe esa ruta física).
+      // Limpiamos la sesión y recargamos: AppContent detecta que no hay
+      // usuario y muestra el Login automáticamente.
       localStorage.removeItem('gymcore_token');
       localStorage.removeItem('gymcore_user');
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      localStorage.removeItem('gymcore-auth');
+      if (typeof window !== 'undefined') {
+        window.location.reload();
       }
     }
     
@@ -104,6 +117,19 @@ api.interceptors.response.use(
     
     if (error.response?.status === 422) {
       console.warn('⚠️ Error de validación:', error.response.data);
+    }
+
+    // Cambio de contraseña obligatorio o licencia vencida: se avisa a la interfaz
+    const code = error.response?.data?.errorCode || error.response?.data?.code;
+    if (typeof window !== 'undefined') {
+      if (error.response?.status === 403 && code === 'PASSWORD_CHANGE_REQUIRED') {
+        window.dispatchEvent(new CustomEvent('systemgym:password-change-required'));
+      }
+      if (error.response?.status === 402) {
+        window.dispatchEvent(new CustomEvent('systemgym:license-required', {
+          detail: error.response?.data?.message,
+        }));
+      }
     }
     
     // ==========================================================
@@ -140,6 +166,8 @@ function normalizeError(error) {
   return {
     status: error.response?.status ?? null,
     message,
+    mensajeUsuario: message,
+    errorCode: error.response?.data?.errorCode ?? null,
     details: error.response?.data ?? null,
     originalError: error,
   };

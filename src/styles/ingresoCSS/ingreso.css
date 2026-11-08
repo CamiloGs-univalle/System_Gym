@@ -1,0 +1,332 @@
+/* ============================================================
+   MÓDULO INGRESO PRODUCTO - Estilos autónomos
+   Compatible con el panel de recepción y el de administrador
+   ============================================================ */
+
+.ingreso-panel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+.ingreso-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ingreso-tab {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ingreso-tab:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.ingreso-tab.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.ingreso-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ingreso-toolbar h3 {
+  margin: 0;
+  font-size: 17px;
+  color: #1e293b;
+}
+
+.ingreso-btn {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #334155;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ingreso-btn:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.ingreso-btn-primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.ingreso-btn-primary:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.ingreso-btn-success {
+  background: #10b981;
+  border-color: #10b981;
+  color: #fff;
+}
+
+.ingreso-btn-success:hover {
+  background: #059669;
+}
+
+.ingreso-btn-danger {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.ingreso-btn-danger:hover {
+  background: #dc2626;
+}
+
+.ingreso-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ingreso-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.ingreso-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ingreso-table th {
+  text-align: left;
+  padding: 10px 12px;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.ingreso-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  vertical-align: middle;
+}
+
+.ingreso-table tr:hover td {
+  background: #f8fafc;
+}
+
+.ingreso-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ingreso-badge-scheduled { background: #dbeafe; color: #1d4ed8; }
+.ingreso-badge-arrived { background: #fef3c7; color: #b45309; }
+.ingreso-badge-confirmed { background: #d1fae5; color: #047857; }
+.ingreso-badge-cancelled { background: #fee2e2; color: #b91c1c; }
+.ingreso-badge-pending { background: #fef3c7; color: #b45309; }
+
+.ingreso-monto { font-weight: 700; white-space: nowrap; }
+.ingreso-monto-green { color: #059669; }
+.ingreso-monto-red { color: #dc2626; }
+
+.ingreso-sub { font-size: 12px; color: #64748b; }
+.ingreso-nombre { font-weight: 600; color: #1e293b; }
+
+.ingreso-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ingreso-mini-btn {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ingreso-mini-btn:hover { border-color: #94a3b8; background: #f8fafc; }
+.ingreso-mini-btn.primary { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+.ingreso-mini-btn.success { background: #ecfdf5; border-color: #6ee7b7; color: #047857; }
+.ingreso-mini-btn.danger { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
+
+.ingreso-vacio {
+  text-align: center;
+  padding: 32px;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+/* Resumen de tarjetas del módulo */
+.ingreso-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ingreso-resumen-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ingreso-resumen-card .icon {
+  font-size: 24px;
+}
+
+.ingreso-resumen-card .label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.ingreso-resumen-card .value {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+/* Modal */
+.ingreso-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.ingreso-modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 22px;
+  width: 520px;
+  max-width: 94vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.ingreso-modal h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.ingreso-modal .sub {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.ingreso-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ingreso-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ingreso-field.full { grid-column: 1 / -1; }
+
+.ingreso-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.ingreso-input {
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.ingreso-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.ingreso-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.ingreso-actions .cancel {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ingreso-actions .cancel:hover { background: #f8fafc; }
+
+.ingreso-total-hint {
+  grid-column: 1 / -1;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #334155;
+  text-align: center;
+}

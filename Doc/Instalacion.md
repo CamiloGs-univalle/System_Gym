@@ -1,4 +1,4 @@
-# GymCore — Instalación y Arranque
+# System Gym — Instalación y Arranque
 
 > Guía paso a paso para levantar el proyecto en entorno de desarrollo  
 > y preparar el build de producción (versión local desktop).
@@ -70,7 +70,7 @@ Contenido del `.env` para desarrollo:
 ```env
 # Modo de la aplicación
 VITE_APP_MODE=desktop           # 'desktop' | 'web'
-VITE_APP_NAME=GymCore
+VITE_APP_NAME=System Gym
 VITE_APP_VERSION=1.0.0
 
 # Base de datos (solo web)
@@ -87,7 +87,7 @@ VITE_BIOMETRICO_ENABLED=false   # true para activar Bloque 5
 Al correr la app por primera vez, Electron crea automáticamente el archivo SQLite en:
 
 ```
-Windows: C:\Users\{usuario}\AppData\Roaming\GymCore\gymcore.db
+Windows: C:\Users\{usuario}\AppData\Roaming\System Gym\gymcore.db
 ```
 
 Para forzar la creación y aplicar migraciones manualmente:
@@ -173,8 +173,8 @@ npm run electron:build
 
 Genera en `dist-electron/`:
 ```
-GymCore-Setup-1.0.0.exe    ← instalador NSIS
-GymCore-1.0.0-win.zip      ← versión portable
+System Gym-Setup-1.0.0.exe    ← instalador NSIS
+System Gym-1.0.0-win.zip      ← versión portable
 ```
 
 Configuración de electron-builder en `package.json`:
@@ -182,7 +182,7 @@ Configuración de electron-builder en `package.json`:
 ```json
 "build": {
   "appId": "com.gymcore.app",
-  "productName": "GymCore",
+  "productName": "System Gym",
   "win": {
     "target": ["nsis", "zip"],
     "icon": "public/icon.ico"

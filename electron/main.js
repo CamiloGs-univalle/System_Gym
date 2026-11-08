@@ -1,29 +1,301 @@
-const { app, BrowserWindow } = require("electron");
+// ============================================================
+// System Gym - Proceso principal de Electron
+// ------------------------------------------------------------
+// - Arranca el backend (Quarkus) en un puerto libre elegido al azar.
+// - Genera una llave aleatoria en cada arranque: solo esta app la conoce,
+//   así una página web abierta en el mismo PC no puede usar la API local.
+// - Usa el Java incluido en el instalador (carpeta "jre"); si no existe,
+//   busca un Java 21 instalado en el equipo.
+// - Nunca cierra procesos ajenos.
+// ============================================================
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { spawn, execSync } = require("child_process");
+const crypto = require("crypto");
+const http = require("http");
+const net = require("net");
+const fs = require("fs");
 const path = require("path");
 
+const isDev = process.env.NODE_ENV === "development";
+const DEV_BACKEND_PORT = 8080;
+
+let backendProcess = null;
+let backendPort = null;
+let appKey = null;
+let mainWindow = null;
+
+// ============================================================
+// LOG EN ARCHIVO (diagnóstico)
+// ============================================================
+function logToFile(line) {
+    try {
+        const logDir = path.join(app.getPath("userData"), "logs");
+        if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+        fs.appendFileSync(path.join(logDir, "app.log"), `[${new Date().toISOString()}] ${line}\n`);
+    } catch (e) {
+        // sin log no se detiene la app
+    }
+}
+
+// ============================================================
+// UNA SOLA INSTANCIA: dos backends sobre la misma base de datos la dañarían
+// ============================================================
+if (!app.requestSingleInstanceLock()) {
+    app.quit();
+} else {
+    app.on("second-instance", () => {
+        if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+        }
+    });
+}
+
+// ============================================================
+// BACKEND
+// ============================================================
+function resolveBackendJar() {
+    if (process.env.GYMCORE_BACKEND_JAR) return process.env.GYMCORE_BACKEND_JAR;
+    if (app.isPackaged) return path.join(process.resourcesPath, "backend", "quarkus-run.jar");
+    return path.join(__dirname, "../../backendGym/target/quarkus-app/quarkus-run.jar");
+}
+
+function findJavaExecutable() {
+    const exeName = process.platform === "win32" ? "java.exe" : "java";
+
+    // 1) Java incluido en el instalador (recomendado: no depende del PC del cliente)
+    const bundled = app.isPackaged
+        ? path.join(process.resourcesPath, "jre", "bin", exeName)
+        : path.join(__dirname, "..", "jre", "bin", exeName);
+    if (fs.existsSync(bundled)) return bundled;
+
+    // 2) JAVA_HOME
+    const javaHome = process.env.JAVA_HOME;
+    if (javaHome) {
+        const exe = path.join(javaHome, "bin", exeName);
+        if (fs.existsSync(exe)) return exe;
+    }
+
+    // 3) Rutas comunes de Java 21 en Windows
+    const vendorDirs = [
+        "C:\\Program Files\\Java",
+        "C:\\Program Files\\Eclipse Adoptium",
+        "C:\\Program Files\\Microsoft",
+        "C:\\Program Files\\Zulu",
+    ];
+    for (const dir of vendorDirs) {
+        try {
+            const matches = fs.readdirSync(dir).filter((f) => /(jdk|jre|zulu)-?21/i.test(f));
+            for (const m of matches) {
+                const exe = path.join(dir, m, "bin", exeName);
+                if (fs.existsSync(exe)) return exe;
+            }
+        } catch (e) { /* carpeta no existe */ }
+    }
+
+    // 4) PATH
+    try {
+        const cmd = process.platform === "win32" ? "where java 2>NUL" : "which java";
+        const result = execSync(cmd, { encoding: "utf8" }).trim();
+        if (result) return result.split(/\r?\n/)[0].trim();
+    } catch (e) { /* no está en PATH */ }
+
+    return null;
+}
+
+function getFreePort() {
+    return new Promise((resolve, reject) => {
+        const srv = net.createServer();
+        srv.unref();
+        srv.on("error", reject);
+        srv.listen(0, "127.0.0.1", () => {
+            const { port } = srv.address();
+            srv.close(() => resolve(port));
+        });
+    });
+}
+
+function checkBackendHealthy(port, timeoutMs = 1500) {
+    return new Promise((resolve) => {
+        const req = http.get(`http://127.0.0.1:${port}/q/health/ready`, { timeout: timeoutMs }, (res) => {
+            let body = "";
+            res.on("data", (c) => (body += c));
+            res.on("end", () => {
+                let ok = false;
+                try {
+                    ok = res.statusCode === 200 && JSON.parse(body).status === "UP";
+                } catch (e) { /* respuesta no válida */ }
+                resolve(ok);
+            });
+        });
+        req.on("error", () => resolve(false));
+        req.on("timeout", () => { req.destroy(); resolve(false); });
+    });
+}
+
+async function waitForBackend(port, maxAttempts = 60, delayMs = 1000) {
+    for (let i = 0; i < maxAttempts; i++) {
+        if (backendProcess && backendProcess.exitCode !== null) return false;
+        if (await checkBackendHealthy(port)) return true;
+        await new Promise((r) => setTimeout(r, delayMs));
+    }
+    return false;
+}
+
+async function startBackend() {
+    // En desarrollo se reutiliza un backend ya levantado (mvn quarkus:dev) sin llave
+    if (isDev && (await checkBackendHealthy(DEV_BACKEND_PORT))) {
+        logToFile("[backend] Usando backend de desarrollo en el puerto 8080");
+        backendPort = DEV_BACKEND_PORT;
+        appKey = null;
+        return { ok: true };
+    }
+
+    const jar = resolveBackendJar();
+    if (!jar || !fs.existsSync(jar)) {
+        logToFile(`[backend] JAR no encontrado: ${jar}`);
+        return { ok: false, reason: "No se encontró el servidor de la aplicación. Reinstale System Gym." };
+    }
+
+    const javaExe = findJavaExecutable();
+    if (!javaExe) {
+        logToFile("[backend] Java no encontrado");
+        return {
+            ok: false,
+            reason: "No se encontró Java 21. Reinstale System Gym (el instalador lo incluye) o instale Java 21 desde https://adoptium.net/",
+        };
+    }
+
+    backendPort = await getFreePort();
+    appKey = crypto.randomBytes(32).toString("hex");
+    logToFile(`[backend] Java: ${javaExe} | JAR: ${jar} | puerto ${backendPort}`);
+
+    const env = {
+        ...process.env,
+        QUARKUS_HTTP_PORT: String(backendPort),
+        SYSTEMGYM_APP_SECRET: appKey,
+    };
+    backendProcess = spawn(javaExe, ["-jar", jar], { env, stdio: "ignore", windowsHide: true });
+    backendProcess.on("error", (err) => logToFile(`[backend] Error: ${err.message}`));
+    backendProcess.on("exit", (code) => logToFile(`[backend] Terminó con código ${code}`));
+
+    const ok = await waitForBackend(backendPort);
+    return ok ? { ok: true } : { ok: false, reason: "El servidor de la aplicación no respondió a tiempo." };
+}
+
+// La interfaz pide la configuración de forma síncrona al cargar (ver preload.js)
+ipcMain.on("systemgym:get-config", (event) => {
+    event.returnValue = {
+        apiUrl: backendPort ? `http://127.0.0.1:${backendPort}/api` : null,
+        appKey,
+    };
+});
+
+// ============================================================
+// VENTANA
+// ============================================================
 function createWindow() {
-    const win = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1400,
         height: 900,
         minWidth: 1200,
         minHeight: 700,
+        title: "System Gym",
         autoHideMenuBar: true,
-
         webPreferences: {
             preload: path.join(__dirname, "preload.js"),
             contextIsolation: true,
-            nodeIntegration: false
-        }
+            nodeIntegration: false,
+            sandbox: true,
+        },
+    });
+    const win = mainWindow;
+    logToFile(`[app] Ventana creada | mode=${isDev ? "development" : "production"}`);
+
+    // Solo se guardan en disco los errores del renderer. Los mensajes
+    // informativos pueden contener datos sensibles y no se persisten.
+    win.webContents.on("console-message", (event, level, message, line, sourceId) => {
+        const isError = level === 3 || level === "error";
+        if (!isError && !isDev) return;
+        const safe = String(message).replace(/(password|contraseña|token)[^,}\n]*/gi, "$1: [oculto]");
+        logToFile(`[renderer:${level}] ${safe} (${sourceId}:${line})`);
     });
 
-    if (process.env.NODE_ENV === "development") {
+    // Ventanas nuevas: solo la de impresión (about:blank). Enlaces externos, al navegador.
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        if (url === "about:blank" || url === "") {
+            return { action: "allow" };
+        }
+        if (/^https?:\/\//i.test(url)) {
+            shell.openExternal(url);
+        }
+        return { action: "deny" };
+    });
+
+    // La ventana principal nunca navega fuera de la app
+    win.webContents.on("will-navigate", (event, url) => {
+        const allowed = isDev ? url.startsWith("http://localhost:5173") : url.startsWith("file://");
+        if (!allowed) event.preventDefault();
+    });
+
+    win.webContents.on("render-process-gone", (event, details) => {
+        logToFile(`[CRASH] render-process-gone reason=${details.reason} exitCode=${details.exitCode}`);
+        try { win.reload(); } catch (e) { /* noop */ }
+    });
+    win.webContents.on("unresponsive", () => logToFile("[WARN] La ventana dejó de responder"));
+    win.webContents.on("responsive", () => logToFile("[INFO] La ventana volvió a responder"));
+
+    if (isDev) {
         win.loadURL("http://localhost:5173");
         win.webContents.openDevTools();
     } else {
-        win.loadFile(
-            path.join(__dirname, "../dist/index.html")
-        );
+        win.loadFile(path.join(__dirname, "../dist/index.html"));
     }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+    logToFile("[app] Iniciando...");
+    const result = await startBackend();
+
+    if (!result.ok) {
+        logToFile(`[app] Backend NO disponible: ${result.reason}`);
+        stopBackend();
+        const { response } = await dialog.showMessageBox({
+            type: "error",
+            title: "System Gym",
+            message: "No se pudo iniciar System Gym.",
+            detail: result.reason,
+            buttons: ["Reintentar", "Salir"],
+            defaultId: 0,
+        });
+        if (response === 0) {
+            app.relaunch();
+        }
+        app.exit(response === 0 ? 0 : 1);
+        return;
+    }
+
+    logToFile("[app] Backend OK, creando ventana");
+    createWindow();
+
+    app.on("activate", () => {
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+});
+
+function stopBackend() {
+    if (backendProcess) {
+        logToFile("[app] Terminando backend PID " + backendProcess.pid);
+        try { backendProcess.kill(); } catch (e) { /* noop */ }
+        backendProcess = null;
+    }
+}
+
+app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+});
+
+app.on("will-quit", () => {
+    logToFile("[app] Cerrando...");
+    stopBackend();
+});

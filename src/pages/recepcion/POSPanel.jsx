@@ -1,846 +1,369 @@
-/**
- * ============================================================
- * PANEL DE PUNTO DE VENTA (POS) - INTEGRADO CON BACKEND
- * ============================================================
- * 
- * Este componente permite realizar ventas de productos y membresías.
- * Se conecta al backend a través de los servicios correspondientes.
- * 
- * FUNCIONALIDADES:
- * - Muestra TODOS los productos al iniciar
- * - Filtra por categoría al seleccionar una
- * - Botón "Todos" para volver a mostrar todos los productos
- * - Busca productos por nombre o código
- * - Busca clientes en el backend
- * - Registra ventas en el backend (descuenta stock automáticamente)
- * - Soporta pago en efectivo o transferencia
- * - Cobra membresías (mensual o por día)
- * - Verifica el turno activo con el backend
- * 
- * @component
- * @returns {JSX.Element} Panel POS completo
- * ============================================================
- */
-
-// Importaciones de React
-import React, { useState, useEffect, useMemo } from 'react';
-
-// Importación de servicios (comunicación con el backend)
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { productosService } from '../../services/productosService';
-import { ventasService } from '../../services/ventasService';
+import ventasService from '../../services/ventasService';
+import { useVentasStore } from '../../store/ventasStore';
 import { clientesService } from '../../services/clientesService';
-import { turnoService } from '../../services/turnoService';
+import { planesService } from '../../services/gimnasio/planesService';
+import { membresiasService } from '../../services/gimnasio/membresiasService';
+import { pagosService } from '../../services/gimnasio/pagosService';
+import { carteraService } from '../../services/gimnasio/carteraService';
+import { streakService } from '../../services/gimnasio/streakService';
+import '../../styles/recepcionCSS/pos.css';
 
-// ============================================================
-// FUNCIONES DE UTILIDAD
-// ============================================================
-
-const formatearPrecioCOP = (valor) => {
-  if (!valor || valor === "0") return "$ 0";
-  const numeroLimpio = valor.toString().replace(/[^0-9]/g, "");
-  if (!numeroLimpio) return "$ 0";
-  const numero = parseInt(numeroLimpio, 10);
-  const formateado = numero.toLocaleString('es-CO');
-  return `$ ${formateado}`;
+const COP = (v) => {
+  if (v == null || isNaN(v)) return '$0';
+  return '$' + Number(Math.round(v)).toLocaleString('es-CO');
 };
 
-const limpiarValorMoneda = (valor) => {
-  if (!valor) return "0";
-  const soloNumeros = valor.toString().replace(/[^0-9]/g, "");
-  if (!soloNumeros) return "0";
-  return String(parseInt(soloNumeros, 10));
-};
+function FlameStreak({ clienteId }) {
+  const [anim, setAnim] = useState(false);
 
-const extraerDatos = (response) => {
-  if (Array.isArray(response)) return response;
-  if (response?.data && Array.isArray(response.data)) return response.data;
-  if (response?.data?.data && Array.isArray(response.data.data)) return response.data.data;
-  if (response?.data?.content && Array.isArray(response.data.content)) return response.data.content;
-  return [];
-};
-
-// ============================================================
-// COMPONENTE PRINCIPAL
-// ============================================================
-
-export default function POSPanel() {
-  // ============================================================
-  // 1. ESTADOS PARA LA INTERFAZ DE USUARIO
-  // ============================================================
-
-  const [carrito, setCarrito] = useState([]);
-  const [pagoRecibido, setPagoRecibido] = useState("0");
-  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
-  const [busqueda, setBusqueda] = useState("");
-  const [cliente, setCliente] = useState(null);
-  const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
-  const [mostrandoResultados, setMostrandoResultados] = useState(false);
-  const [busquedaProducto, setBusquedaProducto] = useState("");
-  const [metodoPago, setMetodoPago] = useState('efectivo');
-
-  // ============================================================
-  // 2. ESTADOS PARA DATOS DEL BACKEND
-  // ============================================================
-
-  const [categoriasBackend, setCategoriasBackend] = useState([]);
-  const [productosBackend, setProductosBackend] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [turnoActivo, setTurnoActivo] = useState(null);
-  const [turnoIdBackend, setTurnoIdBackend] = useState(null);
-  const [turnoValido, setTurnoValido] = useState(false);
-  const [mensajeTurno, setMensajeTurno] = useState("");
-  const [verificandoTurno, setVerificandoTurno] = useState(true);
-
-  // ============================================================
-  // 3. EFECTOS (useEffect)
-  // ============================================================
+  const dias = useMemo(() => {
+    if (!clienteId) return 0;
+    const s = streakService.obtenerStreak(clienteId);
+    return s.diasConsecutivos || 0;
+  }, [clienteId]);
 
   useEffect(() => {
-    verificarTurnoActivo();
-    cargarDatos();
-  }, []);
+    if (dias > 0) { setAnim(true); const t = setTimeout(() => setAnim(false), 800); return () => clearTimeout(t); }
+  }, [dias]);
 
-  const verificarTurnoActivo = async () => {
-    setVerificandoTurno(true);
-    const turnoLocal = localStorage.getItem('turno_activo');
-    
-    if (!turnoLocal) {
-      console.warn('⚠️ No hay turno activo en localStorage');
-      setTurnoActivo(null);
-      setTurnoValido(false);
-      setMensajeTurno("⚠️ No hay turno activo. Abre un turno primero.");
-      setVerificandoTurno(false);
-      return;
-    }
-
-    try {
-      const turnoParseado = JSON.parse(turnoLocal);
-      console.log('📌 Turno desde localStorage:', turnoParseado);
-
-      try {
-        const response = await turnoService.obtenerAbierto(turnoParseado.receptionistId);
-        console.log('📌 Turno desde backend:', response);
-
-        let turnoBackend = response?.data || response || null;
-        if (turnoBackend?.data) turnoBackend = turnoBackend.data;
-        
-        if (turnoBackend && turnoBackend.id) {
-          console.log('✅ Turno encontrado en backend:', turnoBackend);
-          
-          const turnoSincronizado = {
-            ...turnoParseado,
-            id: turnoBackend.id,
-            sincronizado: true,
-            openedAt: turnoBackend.openedAt || turnoParseado.openedAt,
-            status: turnoBackend.status || 'OPEN'
-          };
-          
-          setTurnoActivo(turnoSincronizado);
-          setTurnoIdBackend(turnoBackend.id);
-          setTurnoValido(true);
-          setMensajeTurno(`✅ Turno activo ID: ${turnoBackend.id}`);
-          
-          localStorage.setItem('turno_activo', JSON.stringify(turnoSincronizado));
-          setVerificandoTurno(false);
-          return;
-        }
-      } catch (backendError) {
-        console.error('❌ Error verificando turno en backend:', backendError);
-        
-        if (backendError.response?.status === 404) {
-          console.warn('⚠️ Turno no encontrado en backend (404)');
-          setTurnoValido(false);
-          setMensajeTurno(`⚠️ Turno local ID: ${turnoParseado.id} (no existe en backend)`);
-          setTurnoActivo(turnoParseado);
-          setTurnoIdBackend(turnoParseado.id);
-          
-          alert(
-            `⚠️ El turno local no existe en el backend.\n\n` +
-            `ID del turno local: ${turnoParseado.id}\n` +
-            `Recepcionista ID: ${turnoParseado.receptionistId}\n\n` +
-            `Esto puede pasar porque:\n` +
-            `1. El turno fue cerrado en el backend\n` +
-            `2. El turno fue abierto en modo local\n` +
-            `3. El backend no tiene este turno registrado\n\n` +
-            `Para continuar, abre un nuevo turno desde el panel de turnos.`
-          );
-          
-          setVerificandoTurno(false);
-          return;
-        }
-        
-        setTurnoValido(false);
-        setMensajeTurno("⚠️ Error al verificar turno en backend");
-        setTurnoActivo(turnoParseado);
-        setTurnoIdBackend(turnoParseado.id);
-        setVerificandoTurno(false);
-        return;
-      }
-
-      setTurnoActivo(turnoParseado);
-      setTurnoIdBackend(turnoParseado.id);
-      setTurnoValido(false);
-      setMensajeTurno(`⚠️ Turno local ID: ${turnoParseado.id} (no sincronizado)`);
-
-    } catch (error) {
-      console.error('❌ Error verificando turno:', error);
-      try {
-        const turnoParseado = JSON.parse(turnoLocal);
-        setTurnoActivo(turnoParseado);
-        setTurnoIdBackend(turnoParseado.id);
-        setTurnoValido(false);
-        setMensajeTurno(`⚠️ Turno local ID: ${turnoParseado.id} (error de verificación)`);
-      } catch {
-        setTurnoActivo(null);
-        setTurnoValido(false);
-        setMensajeTurno("❌ Error al verificar turno");
-      }
-    } finally {
-      setVerificandoTurno(false);
-    }
-  };
-
-  const cargarDatos = async () => {
-    try {
-      setLoading(true);
-
-      const categoriasResponse = await productosService.listarCategorias();
-      const categoriasData = extraerDatos(categoriasResponse);
-      setCategoriasBackend(categoriasData);
-
-      const productosResponse = await productosService.listarProductos();
-      const productosData = extraerDatos(productosResponse);
-
-      const productosFormateados = productosData.map(p => ({
-        id: p.id,
-        nombre: p.name || p.nombre || "Sin nombre",
-        codigo: p.code || p.codigo || "N/A",
-        precio: p.salePrice || p.precio || 0,
-        costo: p.costPrice || p.costo || 0,
-        stock: p.stock || 0,
-        stockMinimo: p.minimumStock || p.stockMinimo || 0,
-        categoriaId: p.categoryId || p.category?.id,
-        categoria: p.category?.name || p.categoria || "Sin categoría",
-        imagen: p.imagen || "📦"
-      }));
-
-      setProductosBackend(productosFormateados);
-
-    } catch (err) {
-      console.error('Error cargando datos:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ============================================================
-  // 4. FILTRADO DE PRODUCTOS
-  // ============================================================
-
-  const productosFiltrados = useMemo(() => {
-    if (productosBackend.length === 0) return [];
-
-    if (!busquedaProducto.trim() && categoriaSeleccionada === null) {
-      return productosBackend;
-    }
-
-    if (!busquedaProducto.trim() && categoriaSeleccionada !== null) {
-      return productosBackend.filter(p => p.categoriaId === categoriaSeleccionada);
-    }
-
-    if (busquedaProducto.trim() && categoriaSeleccionada === null) {
-      const busquedaLower = busquedaProducto.toLowerCase();
-      return productosBackend.filter(p =>
-        p.nombre.toLowerCase().includes(busquedaLower) ||
-        p.codigo.toLowerCase().includes(busquedaLower)
-      );
-    }
-
-    const busquedaLower = busquedaProducto.toLowerCase();
-    return productosBackend.filter(p =>
-      (p.categoriaId === categoriaSeleccionada) &&
-      (p.nombre.toLowerCase().includes(busquedaLower) ||
-       p.codigo.toLowerCase().includes(busquedaLower))
-    );
-  }, [productosBackend, busquedaProducto, categoriaSeleccionada]);
-
-  // ============================================================
-  // 5. BÚSQUEDA DE CLIENTES
-  // ============================================================
-
-  const buscarCliente = async (texto) => {
-    setBusqueda(texto);
-    setMostrandoResultados(true);
-
-    if (!texto.trim()) {
-      setCliente(null);
-      setResultadosBusqueda([]);
-      setMostrandoResultados(false);
-      return;
-    }
-
-    try {
-      const encontrados = await clientesService.buscar(texto);
-      setResultadosBusqueda(encontrados);
-
-      if (encontrados.length === 1) {
-        const exacto = encontrados[0];
-        if (exacto.nombre.toLowerCase() === texto.toLowerCase() || exacto.cedula === texto) {
-          setCliente(exacto);
-          setMostrandoResultados(false);
-          setBusqueda(exacto.nombre);
-          return;
-        }
-      }
-
-      if (encontrados.length === 0) {
-        setCliente(null);
-      }
-    } catch (err) {
-      console.error('Error buscando cliente:', err);
-      setResultadosBusqueda([]);
-    }
-  };
-
-  const seleccionarCliente = (clienteSeleccionado) => {
-    setCliente(clienteSeleccionado);
-    setBusqueda(clienteSeleccionado.nombre);
-    setMostrandoResultados(false);
-    setResultadosBusqueda([]);
-  };
-
-  const limpiarCliente = () => {
-    setCliente(null);
-    setBusqueda("");
-    setResultadosBusqueda([]);
-    setMostrandoResultados(false);
-  };
-
-  // ============================================================
-  // 6. FUNCIONES DEL CARRITO
-  // ============================================================
-
-  const agregarAlCarrito = (producto) => {
-    if (producto.stock <= 0) {
-      alert(`⚠️ El producto "${producto.nombre}" no tiene stock disponible.`);
-      return;
-    }
-
-    const existente = carrito.find((item) => item.id === producto.id);
-    if (existente) {
-      if (existente.cantidad >= producto.stock) {
-        alert(`⚠️ No hay suficiente stock de "${producto.nombre}" (disponible: ${producto.stock})`);
-        return;
-      }
-      setCarrito(
-        carrito.map((item) =>
-          item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item
-        )
-      );
-    } else {
-      setCarrito([...carrito, { ...producto, cantidad: 1, tipo: "producto" }]);
-    }
-  };
-
-  const cobrarMensualidad = (modo) => {
-    if (!cliente) {
-      alert("Debes seleccionar un cliente primero");
-      return;
-    }
-
-    const yaExiste = carrito.some(
-      (item) => item.tipo === "mensualidad" && item.clienteId === cliente.id
-    );
-    if (yaExiste) {
-      alert(`Ya hay un pago de ${modo === "dia" ? "día" : "mensualidad"} para ${cliente.nombre}`);
-      return;
-    }
-
-    const esDia = modo === "dia";
-    const precio = esDia ? (cliente.mensualidad?.precioDia || 5000) : (cliente.mensualidad?.precioMensual || 80000);
-
-    const nuevoItem = {
-      id: `mensualidad-${cliente.id}-${Date.now()}`,
-      clienteId: cliente.id,
-      nombre: esDia
-        ? `Pago x día — ${cliente.nombre}`
-        : `Mensualidad — ${cliente.nombre}`,
-      precio: precio,
-      cantidad: 1,
-      tipo: "mensualidad",
-      modo: modo
-    };
-
-    setCarrito([...carrito, nuevoItem]);
-
-    setCliente(null);
-    setBusqueda("");
-    setResultadosBusqueda([]);
-    setMostrandoResultados(false);
-  };
-
-  const eliminarDelCarrito = (itemId) => {
-    setCarrito(carrito.filter((item) => item.id !== itemId));
-  };
-
-  const actualizarCantidad = (itemId, nuevaCantidad) => {
-    if (nuevaCantidad <= 0) {
-      eliminarDelCarrito(itemId);
-      return;
-    }
-
-    const item = carrito.find(i => i.id === itemId);
-    if (item && item.tipo === "producto" && nuevaCantidad > item.stock) {
-      alert(`⚠️ No hay suficiente stock (disponible: ${item.stock})`);
-      return;
-    }
-
-    setCarrito(
-      carrito.map((item) => (item.id === itemId ? { ...item, cantidad: nuevaCantidad } : item))
-    );
-  };
-
-  // ============================================================
-  // 7. CÁLCULOS DE TOTALES
-  // ============================================================
-
-  const totalCarrito = carrito.reduce((total, item) => total + item.precio * item.cantidad, 0);
-
-  const calcularCambio = () => {
-    const recibido = parseFloat(pagoRecibido);
-    if (isNaN(recibido)) return 0;
-    return recibido - totalCarrito;
-  };
-
-  const cambio = calcularCambio();
-
-  const handlePagoChange = (e) => {
-    const valorInput = e.target.value;
-    const soloNumeros = limpiarValorMoneda(valorInput);
-    setPagoRecibido(soloNumeros);
-  };
-
-  // ============================================================
-  // 8. PROCESAR VENTA - VERSIÓN CON FALLBACK LOCAL
-  // ============================================================
-
-  const handleVenta = async () => {
-    const mensualidades = carrito.filter(item => item.tipo === "mensualidad");
-    const productos = carrito.filter(item => item.tipo === "producto");
-
-    if (carrito.length === 0) {
-      alert("El carrito está vacío");
-      return;
-    }
-
-    if (cambio < 0) {
-      alert("El pago recibido es insuficiente");
-      return;
-    }
-
-    const shiftId = turnoIdBackend || turnoActivo?.id;
-    
-    if (!shiftId) {
-      alert("❌ No hay un turno activo válido. Abre un turno primero.");
-      return;
-    }
-
-    // Si el turno no es válido, mostrar advertencia pero permitir continuar
-    if (!turnoValido) {
-      const continuar = window.confirm(
-        `⚠️ El turno no está sincronizado con el backend.\n\n` +
-        `ID del turno: ${shiftId}\n` +
-        `Estado: ${turnoValido ? 'Sincronizado' : 'Local'}\n\n` +
-        `Si continúas, la venta se registrará localmente pero el stock NO se actualizará en el backend.\n\n` +
-        `¿Deseas continuar?`
-      );
-      if (!continuar) return;
-    }
-
-    try {
-      setLoading(true);
-
-      const mapMetodoPago = {
-        'efectivo': 'CASH',
-        'transferencia': 'TRANSFER',
-        'tarjeta': 'CARD'
-      };
-      const paymentMethod = mapMetodoPago[metodoPago] || 'CASH';
-      const clientId = cliente?.id || null;
-
-      let ventasRegistradas = [];
-
-      // ✅ PROCESAR PRODUCTOS
-      if (productos.length > 0) {
-        const totalProductos = productos.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
-        
-        const items = productos.map(item => ({
-          productId: item.id,
-          quantity: item.cantidad,
-          unitPrice: item.precio,
-          subtotal: item.precio * item.cantidad
-        }));
-
-        console.log('📦 Items a enviar:', items);
-        console.log('💳 Método de pago:', paymentMethod);
-        console.log('🆔 Turno ID:', shiftId);
-        console.log('💰 Total productos:', totalProductos);
-
-        if (turnoValido) {
-          try {
-            const resultado = await ventasService.registrarVenta(
-              items,
-              paymentMethod,
-              shiftId,
-              'PRODUCT_SALE',
-              clientId,
-              totalProductos
-            );
-            ventasRegistradas.push(resultado);
-            console.log('✅ Venta de productos registrada en backend');
-          } catch (backendError) {
-            console.warn('⚠️ Error en backend, registrando localmente:', backendError.message);
-            ventasRegistradas.push({ 
-              id: Date.now(), 
-              local: true, 
-              message: 'Registrada localmente (backend falló)' 
-            });
-          }
-        } else {
-          console.log('📝 Modo local: venta de productos registrada solo en frontend');
-          ventasRegistradas.push({ 
-            id: Date.now(), 
-            local: true, 
-            message: 'Registrada localmente' 
-          });
-        }
-      }
-
-      // ✅ PROCESAR MEMBRESÍAS
-      if (mensualidades.length > 0) {
-        for (const item of mensualidades) {
-          const esDia = item.modo === "dia";
-          
-          const itemsMembresia = [{
-            productId: null,
-            quantity: 1,
-            unitPrice: item.precio,
-            subtotal: item.precio
-          }];
-
-          if (turnoValido) {
-            try {
-              const resultado = await ventasService.registrarVenta(
-                itemsMembresia,
-                paymentMethod,
-                shiftId,
-                'MEMBERSHIP_PAYMENT',
-                item.clienteId,
-                item.precio
-              );
-              ventasRegistradas.push(resultado);
-              console.log(`✅ ${esDia ? 'Día' : 'Mensualidad'} registrada en backend`);
-            } catch (backendError) {
-              console.warn(`⚠️ Error en backend para ${esDia ? 'día' : 'mensualidad'}:`, backendError.message);
-              ventasRegistradas.push({ 
-                id: Date.now(), 
-                local: true, 
-                message: `Registrada localmente (backend falló)` 
-              });
-            }
-          } else {
-            console.log(`📝 Modo local: ${esDia ? 'Día' : 'Mensualidad'} registrada solo en frontend`);
-            ventasRegistradas.push({ 
-              id: Date.now(), 
-              local: true, 
-              message: 'Registrada localmente' 
-            });
-          }
-        }
-      }
-
-      // ✅ CONSTRUIR MENSAJE DE ÉXITO
-      let mensaje = `✅ Venta ${turnoValido ? 'registrada' : 'local'} exitosamente\n\n`;
-      mensaje += `💰 Total: $${totalCarrito.toLocaleString()}\n`;
-
-      const labelMetodo = metodoPago === 'efectivo' ? '💵 Efectivo' :
-                          metodoPago === 'transferencia' ? '📲 Transferencia' : '💳 Tarjeta';
-      mensaje += `💳 Método de pago: ${labelMetodo}\n\n`;
-
-      if (productos.length > 0) {
-        mensaje += `📦 Productos (${productos.length}):\n`;
-        productos.forEach(item => {
-          mensaje += `  • ${item.nombre} x${item.cantidad} = $${(item.precio * item.cantidad).toLocaleString()}\n`;
-        });
-      }
-
-      if (mensualidades.length > 0) {
-        mensaje += `\n💳 Pagos de membresía (${mensualidades.length}):\n`;
-        mensualidades.forEach(item => {
-          mensaje += `  • ${item.nombre}: $${item.precio.toLocaleString()}\n`;
-        });
-      }
-
-      if (cliente) {
-        mensaje += `\n👤 Cliente: ${cliente.nombre}`;
-      }
-
-      if (!turnoValido || ventasRegistradas.some(v => v.local)) {
-        mensaje += `\n\n⚠️ Modo local - El stock no se actualizó en el backend.`;
-      }
-
-      if (ventasRegistradas.length > 0) {
-        const locales = ventasRegistradas.filter(v => v.local).length;
-        const reales = ventasRegistradas.length - locales;
-        mensaje += `\n\n✅ ${reales} transacción(es) registrada(s) en backend`;
-        if (locales > 0) {
-          mensaje += `\n⚠️ ${locales} transacción(es) registrada(s) localmente`;
-        }
-      }
-
-      alert(mensaje);
-
-      // ✅ LIMPIAR ESTADO
-      setCarrito([]);
-      setPagoRecibido("0");
-      setCliente(null);
-      setBusqueda("");
-      setResultadosBusqueda([]);
-      setMostrandoResultados(false);
-      setBusquedaProducto("");
-
-      // ✅ RECARGAR DATOS
-      await cargarDatos();
-
-    } catch (err) {
-      console.error('❌ Error al procesar venta:', err);
-      
-      let mensajeError = 'Error al procesar la venta: ';
-      
-      if (err.message) {
-        mensajeError += err.message;
-      } else if (err.details?.message) {
-        mensajeError += err.details.message;
-      }
-      
-      if (err.details?.violations) {
-        const violaciones = err.details.violations.map(v => 
-          `${v.propertyPath}: ${v.message}`
-        ).join('\n');
-        mensajeError += '\n\nDetalles:\n' + violaciones;
-      }
-      
-      alert(mensajeError);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ============================================================
-  // 9. UTILIDADES DE INTERFAZ
-  // ============================================================
-
-  const diasClase = !cliente
-    ? ""
-    : !cliente.mensualidad?.activa
-      ? "dias-vencido"
-      : (cliente.mensualidad?.diasRestantes || 0) <= 3
-        ? "dias-alerta"
-        : "dias-ok";
-
-  const getAvatarIcon = () => {
-    if (!cliente) return "🧍";
-    if (cliente.genero === "masculino") return "👨";
-    if (cliente.genero === "femenino") return "👩";
-    return "🧍";
-  };
-
-  // ============================================================
-  // 10. RENDERIZADO
-  // ============================================================
-
-  const categoriasMostrar = categoriasBackend.length > 0 ? categoriasBackend : [];
-  const productosMostrar = productosFiltrados;
-
-  if (verificandoTurno) {
+  if (dias === 0) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '400px',
-        flexDirection: 'column',
-        gap: '16px'
-      }}>
-        <span style={{ fontSize: '40px' }}>⏳</span>
-        <p style={{ color: '#6b7280' }}>Verificando turno activo...</p>
+      <div className="streak-container" style={{ background: '#f3f4f6', border: '1px dashed #d1d5db', borderRadius: 10, padding: '6px 10px', margin: '6px 0' }}>
+        <span style={{ fontSize: '1.1rem' }}>🪨</span>
+        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Sin racha</span>
       </div>
     );
   }
 
+  let nombre, color, bg, emoji;
+  if (dias >= 60) { nombre = 'Legendario'; color = '#7c3aed'; bg = 'linear-gradient(135deg, #ede9fe, #c4b5fd)'; emoji = '🌋'; }
+  else if (dias >= 30) { nombre = 'Inferno'; color = '#dc2626'; bg = 'linear-gradient(135deg, #fee2e2, #fca5a5)'; emoji = '🔥'; }
+  else if (dias >= 14) { nombre = 'Fuego'; color = '#ea580c'; bg = 'linear-gradient(135deg, #fff7ed, #fdba74)'; emoji = '🔥'; }
+  else if (dias >= 7) { nombre = 'Llamita'; color = '#d97706'; bg = 'linear-gradient(135deg, #fffbeb, #fcd34d)'; emoji = '🔥'; }
+  else { nombre = 'Chispa'; color = '#eab308'; bg = 'linear-gradient(135deg, #fefce8, #fde047)'; emoji = '✨'; }
+
+  const pct = Math.min((dias / 30) * 100, 100);
+
   return (
-    <div className="pos-wireframe">
-      {/* BANNER DE ESTADO DEL TURNO */}
-      <div style={{
-        background: turnoValido ? '#d1fae5' : '#fee2e2',
-        color: turnoValido ? '#065f46' : '#991b1b',
-        padding: '10px 16px',
-        borderRadius: '8px',
-        marginBottom: '16px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '8px'
-      }}>
-        <span style={{ fontWeight: '500' }}>
-          {mensajeTurno || (turnoActivo ? `Turno ID: ${turnoActivo.id}` : '⚠️ Sin turno activo')}
-        </span>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span style={{ fontSize: '14px' }}>
-            {turnoValido ? '✅ Sincronizado' : '⚠️ Local'}
-          </span>
-          {!turnoValido && (
-            <button 
-              onClick={() => window.location.href = '/admin/turnos'}
-              style={{
-                background: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                padding: '4px 12px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              Abrir Turno
-            </button>
-          )}
+    <div className={`streak-container ${anim ? 'streak-animating' : ''}`}
+      style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: '6px 10px', margin: '6px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: '1.2rem' }}>{emoji}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>{dias}</span>
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, color, textTransform: 'uppercase' }}>{nombre}</span>
+        </div>
+        <div style={{ fontSize: '0.65rem', color: '#6b7280' }}>dias consecutivos</div>
+        <div style={{ height: 3, background: 'rgba(0,0,0,0.08)', borderRadius: 2, marginTop: 3 }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2, transition: 'width 0.5s' }} />
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* COLUMNA IZQUIERDA: Productos */}
-      <section className="pos-panel pos-panel-productos">
-        <input
-          type="text"
-          className="pos-input-pill pos-buscar-producto"
-          placeholder="Buscar Producto por nombre o código..."
-          value={busquedaProducto}
-          onChange={(e) => setBusquedaProducto(e.target.value)}
-        />
+export default function POSPanel({ turnoActivo, turnoValido, turnoIdBackend, verificandoTurno }) {
+  const agregarVenta = useVentasStore(state => state.agregarVenta);
+  const [clientesCache, setClientesCache] = useState([]);
+  const [productos, setProductos] = useState([]);
+  const [planes, setPlanes] = useState([]);
+  const [categorias, setCategorias] = useState([]);
+  const [catSeleccionada, setCatSeleccionada] = useState('Todos');
+  const [busqueda, setBusqueda] = useState('');
 
-        <div className="categorias-container">
-          {categoriasMostrar.length > 0 ? (
-            <>
-              <button
-                className={`categoria-btn ${categoriaSeleccionada === null ? "active" : ""}`}
-                onClick={() => {
-                  setCategoriaSeleccionada(null);
-                  setBusquedaProducto("");
-                }}
-              >
-                📦 Todos
-              </button>
-              {categoriasMostrar.map((cat) => (
-                <button
-                  key={cat.id}
-                  className={`categoria-btn ${categoriaSeleccionada === cat.id ? "active" : ""}`}
-                  onClick={() => {
-                    setCategoriaSeleccionada(cat.id);
-                    setBusquedaProducto("");
-                  }}
-                >
-                  {cat.nombre}
-                </button>
-              ))}
-            </>
-          ) : (
-            <span style={{ padding: '8px', color: '#6b7280' }}>Cargando categorías...</span>
-          )}
+  const [cliente, setCliente] = useState(null);
+  const [busquedaCliente, setBusquedaCliente] = useState('');
+  const [mostrarResultados, setMostrarResultados] = useState(false);
+  const [membresia, setMembresia] = useState(null);
+
+  const [carrito, setCarrito] = useState([]);
+  const [metodoPago, setMetodoPago] = useState('efectivo');
+  const [montoRecibido, setMontoRecibido] = useState('');
+  const [procesando, setProcesando] = useState(false);
+  const [notif, setNotif] = useState(null);
+  const inputClienteRef = useRef(null);
+
+  const mostrarNotif = (tipo, texto) => {
+    setNotif({ tipo, texto });
+    setTimeout(() => setNotif(null), 3000);
+  };
+
+  const recargarProductos = useCallback(async () => {
+    try {
+      const prodsResp = await productosService.listarProductos();
+      const prodsData = Array.isArray(prodsResp) ? prodsResp : prodsResp?.data || [];
+      setProductos(prodsData.map(p => ({
+        id: p.id, nombre: p.name || p.nombre || '', codigo: p.code || p.codigo || '',
+        precio: p.salePrice || p.precio || 0, stock: p.stock || 0,
+        categoriaId: p.categoryId || p.category?.id,
+        categoria: p.category?.name || p.categoria || 'General', imagen: p.imagen || ''
+      })));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const cargar = async () => {
+      try {
+        const catsResp = await productosService.listarCategorias();
+        const catsData = Array.isArray(catsResp) ? catsResp : catsResp?.data || [];
+        setCategorias(catsData.map(c => ({ id: c.id, nombre: c.name || c.nombre || 'General' })));
+      } catch {}
+      try {
+        const prodsResp = await productosService.listarProductos();
+        const prodsData = Array.isArray(prodsResp) ? prodsResp : prodsResp?.data || [];
+        setProductos(prodsData.map(p => ({
+          id: p.id, nombre: p.name || p.nombre || '', codigo: p.code || p.codigo || '',
+          precio: p.salePrice || p.precio || 0, stock: p.stock || 0,
+          categoriaId: p.categoryId || p.category?.id,
+          categoria: p.category?.name || p.categoria || 'General', imagen: p.imagen || ''
+        })));
+      } catch {}
+      setPlanes(planesService.listar());
+      try {
+        const clientesResp = await clientesService.listar();
+        setClientesCache(Array.isArray(clientesResp) ? clientesResp : []);
+      } catch { setClientesCache([]); }
+    };
+    cargar();
+  }, []);
+
+  const clientesFiltrados = useMemo(() => {
+    if (!busquedaCliente.trim()) return [];
+    const q = busquedaCliente.toLowerCase();
+    return clientesCache.filter(c => {
+      const nombre = (c.nombre || '').toLowerCase();
+      const cedula = (c.cedula || '').toLowerCase();
+      const telefono = (c.telefono || '').toLowerCase();
+      const email = (c.email || '').toLowerCase();
+      return nombre.includes(q) || cedula.includes(q) || telefono.includes(q) || email.includes(q);
+    }).slice(0, 8);
+  }, [clientesCache, busquedaCliente]);
+
+  const productosFiltrados = useMemo(() => {
+    let f = productos;
+    if (catSeleccionada !== 'Todos') f = f.filter(p => p.categoriaId === catSeleccionada);
+    if (busqueda.trim()) {
+      const q = busqueda.toLowerCase();
+      f = f.filter(p => p.nombre.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q));
+    }
+    return f;
+  }, [productos, catSeleccionada, busqueda]);
+
+  const seleccionarCliente = useCallback((c) => {
+    setCliente(c);
+    setBusquedaCliente(c.nombre || '');
+    setMostrarResultados(false);
+    try {
+      const mem = membresiasService.obtenerActivaPorCliente(c.id);
+      setMembresia(mem);
+      streakService.registrarAsistencia(c.id);
+    } catch { setMembresia(null); }
+  }, []);
+
+  const quitarCliente = useCallback(() => {
+    setCliente(null); setMembresia(null); setBusquedaCliente('');
+  }, []);
+
+  const agregarAlCarrito = useCallback((item, tipo) => {
+    setCarrito(prev => {
+      const idx = prev.findIndex(i => i.id === item.id && i.tipo === tipo);
+      if (idx >= 0) {
+        const copia = [...prev];
+        copia[idx] = { ...copia[idx], cantidad: copia[idx].cantidad + 1 };
+        return copia;
+      }
+      return [...prev, {
+        id: item.id, tipo, nombre: item.nombre,
+        precio: item.precio || 0,
+        cantidad: 1, clienteId: cliente?.id, clienteNombre: cliente?.nombre, plan: tipo === 'plan' ? item : null
+      }];
+    });
+  }, [cliente]);
+
+  const eliminarDelCarrito = useCallback((idx) => {
+    setCarrito(prev => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const cambiarCantidad = useCallback((idx, delta) => {
+    setCarrito(prev => {
+      const copia = [...prev];
+      copia[idx] = { ...copia[idx], cantidad: Math.max(0, copia[idx].cantidad + delta) };
+      return copia.filter(i => i.cantidad > 0);
+    });
+  }, []);
+
+  const total = useMemo(() => carrito.reduce((s, i) => s + i.precio * i.cantidad, 0), [carrito]);
+  const cambio = useMemo(() => {
+    if (metodoPago !== 'efectivo') return null;
+    return (parseFloat(montoRecibido) || 0) - total;
+  }, [metodoPago, montoRecibido, total]);
+
+  const procesarVenta = useCallback(async () => {
+    if (carrito.length === 0 || procesando) return;
+    if (metodoPago === 'efectivo' && (cambio == null || cambio < 0)) {
+      mostrarNotif('error', 'Monto insuficiente'); return;
+    }
+    const shiftId = turnoIdBackend || turnoActivo?.id;
+    if (!shiftId) { mostrarNotif('error', 'Abre un turno primero'); return; }
+
+    setProcesando(true);
+    try {
+      const mapMetodo = { 'efectivo': 'CASH', 'transferencia': 'TRANSFER', 'tarjeta': 'CARD' };
+      const payMethod = mapMetodo[metodoPago] || 'CASH';
+      const productosVenta = carrito.filter(i => i.tipo === 'producto');
+      const planesVenta = carrito.filter(i => i.tipo === 'plan');
+
+      if (productosVenta.length > 0 && turnoValido) {
+        const items = productosVenta.map(i => ({
+          productId: i.id, quantity: i.cantidad, unitPrice: i.precio, subtotal: i.precio * i.cantidad
+        }));
+        const totalProd = productosVenta.reduce((s, i) => s + i.precio * i.cantidad, 0);
+        await ventasService.registrarVenta(items, payMethod, shiftId, 'PRODUCT_SALE', cliente?.id, totalProd);
+        agregarVenta({
+          descripcion: productosVenta.map(i => i.nombre).join(', '),
+          total: totalProd,
+          metodoPago: payMethod,
+          tipo: 'producto',
+          cliente: cliente?.nombre || null
+        });
+      }
+
+      for (const pl of planesVenta) {
+        let membresiaCreadaId = membresia?.id || null;
+
+        if (membresia) {
+          try {
+            membresiasService.renovar(membresia.id, {
+              planId: pl.id, planNombre: pl.plan?.nombre || pl.nombre,
+              planPrecio: pl.precio, precioAcordado: pl.precio,
+              montoPagado: pl.precio, metodoPago: payMethod, responsable: 'Recepcion'
+            });
+          } catch (e) { console.warn('Error renovando membresia local:', e.message); }
+        } else if (pl.clienteId) {
+          try {
+            const duracionDias = pl.plan?.duracion || 30;
+            const fechaInicio = new Date();
+            const fechaFin = new Date(fechaInicio.getTime() + duracionDias * 86400000);
+            const nuevaMembresia = membresiasService.crear({
+              clienteId: pl.clienteId, planId: pl.id, planNombre: pl.plan?.nombre || pl.nombre,
+              planPrecio: pl.precio, precioAcordado: pl.precio,
+              fechaInicio: fechaInicio.toISOString().split('T')[0],
+              fechaVencimiento: fechaFin.toISOString().split('T')[0],
+              modeloCobro: '30_DIAS', diasGracia: 5, sedeId: 1
+            });
+            membresiaCreadaId = nuevaMembresia.id;
+          } catch (e) { console.warn('Error creando membresia local:', e.message); }
+        }
+
+        if (pl.clienteId) {
+          try {
+            await clientesService.renovarMembresia(pl.clienteId, {
+              tipo: pl.plan?.nombre?.toLowerCase()?.includes('diario') ? 'daily' :
+                    pl.plan?.nombre?.toLowerCase()?.includes('trimestral') ? 'quarterly' :
+                    pl.plan?.nombre?.toLowerCase()?.includes('semestral') ? 'semestral' :
+                    pl.plan?.nombre?.toLowerCase()?.includes('anual') ? 'annual' : 'mensual',
+              monto: pl.precio, metodoPago: payMethod,
+              efectivoRecibido: metodoPago === 'efectivo' ? (parseFloat(montoRecibido) || pl.precio) : pl.precio,
+              shiftId, processedByUserId: ventasService.getUserId()
+            });
+          } catch (e) {
+            // Si el sistema no registró el cobro, no se debe dar por pagada la membresía
+            throw new Error('No se pudo registrar la membresía: ' + (e.mensajeUsuario || e.message));
+          }
+        }
+
+        pagosService.registrarPagoMembresia(membresiaCreadaId, pl.clienteId, pl.clienteNombre, pl.precio, payMethod, { planNombre: pl.plan?.nombre || pl.nombre });
+        agregarVenta({
+          descripcion: `Membresia: ${pl.plan?.nombre || pl.nombre}`,
+          total: pl.precio,
+          metodoPago: payMethod,
+          tipo: 'mensualidad',
+          cliente: pl.clienteNombre || cliente?.nombre || null
+        });
+
+        try {
+          const fechaVenc = new Date();
+          fechaVenc.setDate(fechaVenc.getDate() + (pl.plan?.duracion || 30));
+          carteraService.crearDesdeFactura({
+            clienteId: pl.clienteId,
+            clienteNombre: pl.clienteNombre || cliente?.nombre || '',
+            concepto: 'MEMBRESIA',
+            fechaVencimiento: fechaVenc.toISOString().split('T')[0],
+            valor: pl.precio
+          });
+        } catch (e) { console.warn('Error creando cartera:', e.message); }
+      }
+
+      mostrarNotif('exito', `Venta procesada - ${COP(total)}`);
+      setCarrito([]); setMontoRecibido(''); quitarCliente();
+      await recargarProductos();
+    } catch (e) {
+      mostrarNotif('error', e.message || 'Error al procesar');
+    } finally { setProcesando(false); }
+  }, [carrito, cliente, metodoPago, montoRecibido, total, cambio, procesando, turnoIdBackend, turnoActivo, turnoValido, membresia, quitarCliente, recargarProductos]);
+
+  return (
+    <div className="pos-wireframe">
+      {notif && (
+        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, padding: '12px 20px', borderRadius: 8, background: notif.tipo === 'exito' ? '#10b981' : '#ef4444', color: '#fff', fontWeight: 600, fontSize: 14, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+          {notif.tipo === 'exito' ? '✓ ' : '✕ '}{notif.texto}
         </div>
+      )}
 
+      <section className="pos-panel pos-panel-productos">
+        <input className="pos-input-pill pos-buscar-producto" type="text" placeholder="Buscar producto..." value={busqueda} onChange={e => setBusqueda(e.target.value)} />
+        <div className="categorias-container">
+          <button className={`categoria-btn ${catSeleccionada === 'Todos' ? 'active' : ''}`} onClick={() => setCatSeleccionada('Todos')}>
+            Todos <span className="categoria-btn-count">{productos.length}</span>
+          </button>
+          {categorias.map(cat => (
+            <button key={cat.id} className={`categoria-btn ${catSeleccionada === cat.id ? 'active' : ''}`} onClick={() => setCatSeleccionada(cat.id)}>
+              {cat.nombre} <span className="categoria-btn-count">{productos.filter(p => p.categoriaId === cat.id).length}</span>
+            </button>
+          ))}
+        </div>
         <div className="productos-grid">
-          {loading && productosMostrar.length === 0 ? (
-            <div className="productos-vacio">
-              <span>⏳</span>
-              <p>Cargando productos...</p>
-            </div>
-          ) : productosMostrar.length === 0 ? (
-            <div className="productos-vacio">
-              <span>🔍</span>
-              <p>No se encontraron productos</p>
-            </div>
-          ) : (
-            productosMostrar.map((producto) => (
-              <div
-                key={producto.id}
-                className={`producto-item ${producto.stock <= 0 ? 'producto-sin-stock' : ''}`}
-                onClick={() => producto.stock > 0 && agregarAlCarrito(producto)}
-                style={producto.stock <= 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-              >
-                <div className="producto-imagen">{producto.imagen || "📦"}</div>
-                <div className="producto-detalles">
-                  <span className="producto-nombre">{producto.nombre}</span>
-                  <span className="producto-precio">$ {producto.precio.toLocaleString()}</span>
-                  <span className="producto-stock" style={{ color: producto.stock <= 0 ? '#ef4444' : '#6b7280' }}>
-                    {producto.stock <= 0 ? '❌ Sin stock' : `Stock: ${producto.stock}`}
-                  </span>
-                </div>
+          {productosFiltrados.length === 0 ? (
+            <div className="productos-vacio"><span>📦</span><p>Sin productos</p></div>
+          ) : productosFiltrados.map(p => (
+            <div key={p.id} className={`producto-item ${p.stock <= 0 ? 'producto-sin-stock' : ''}`}
+              onClick={() => p.stock > 0 && agregarAlCarrito(p, 'producto')}
+              style={p.stock <= 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}>
+              <div className="producto-imagen">{p.imagen || '📦'}</div>
+              <div className="producto-detalles">
+                <span className="producto-nombre">{p.nombre}</span>
+                <span className="producto-precio">{COP(p.precio)}</span>
+                <span className="producto-stock" style={{ color: p.stock <= 0 ? '#ef4444' : '#6b7280' }}>
+                  {p.stock <= 0 ? 'Sin stock' : `Stock: ${p.stock}`}
+                </span>
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* COLUMNA DERECHA: Cliente + Carrito + Totales */}
       <div className="pos-panel-derecho">
-
-        {/* FICHA DE CLIENTE */}
         <section className="pos-panel pos-panel-cliente">
           <div className="cliente-fila-superior">
-            <div className="cliente-foto">{getAvatarIcon()}</div>
+            <div className="cliente-foto">{cliente ? (cliente.genero === 'masculino' ? '👨' : '👩') : '🧍'}</div>
             <div style={{ flex: 1, position: 'relative' }}>
-              <input
-                type="text"
-                className="pos-input-pill cliente-nombre-input"
-                placeholder="Buscar cliente por nombre, cédula o teléfono"
-                value={busqueda}
-                onChange={(e) => buscarCliente(e.target.value)}
-                onFocus={() => {
-                  if (busqueda.trim() && resultadosBusqueda.length > 0) {
-                    setMostrandoResultados(true);
-                  }
-                }}
-                onBlur={() => {
-                  setTimeout(() => {
-                    if (!cliente) {
-                      setMostrandoResultados(false);
-                    }
-                  }, 200);
-                }}
-              />
-              {cliente && (
-                <button
-                  className="cliente-quitar-btn"
-                  onClick={limpiarCliente}
-                  title="Quitar cliente"
-                >
-                  ✕
-                </button>
-              )}
-              {mostrandoResultados && resultadosBusqueda.length > 0 && busqueda.trim() && (
+              <input ref={inputClienteRef} className="pos-input-pill cliente-nombre-input" placeholder="Buscar cliente por nombre, cedula o telefono"
+                value={busquedaCliente}
+                onChange={e => { setBusquedaCliente(e.target.value); setMostrarResultados(true); setCliente(null); setMembresia(null); }}
+                onFocus={() => { if (busquedaCliente.trim() && clientesFiltrados.length > 0) setMostrarResultados(true); }}
+                onBlur={() => setTimeout(() => setMostrarResultados(false), 200)} />
+              {cliente && <button className="cliente-quitar-btn" onClick={quitarCliente} title="Quitar">&times;</button>}
+              {mostrarResultados && clientesFiltrados.length > 0 && busquedaCliente.trim() && (
                 <div className="resultados-busqueda-cliente">
-                  {resultadosBusqueda.map((c) => (
-                    <div
-                      key={c.id}
-                      className="resultado-item-cliente"
-                      onClick={() => seleccionarCliente(c)}
-                    >
+                  {clientesFiltrados.map(c => (
+                    <div key={c.id} className="resultado-item-cliente" onMouseDown={() => seleccionarCliente(c)}>
                       <div className="resultado-info">
                         <span className="resultado-nombre">{c.nombre}</span>
-                        <span className="resultado-detalle">Céd: {c.cedula}</span>
+                        <span className="resultado-detalle">Ced: {c.cedula}</span>
                       </div>
-                      <span className="resultado-telefono">📱 {c.telefono}</span>
+                      <span className="resultado-telefono">{c.telefono}</span>
                     </div>
                   ))}
                 </div>
@@ -848,166 +371,126 @@ export default function POSPanel() {
             </div>
           </div>
 
-          <div className="cliente-fila-datos">
-            <input
-              type="text"
-              className="pos-input-pill"
-              placeholder="Cédula"
-              value={cliente?.cedula || ""}
-              readOnly
-            />
-            <input
-              type="text"
-              className="pos-input-pill"
-              placeholder="Teléfono"
-              value={cliente?.telefono || ""}
-              readOnly
-            />
-            <input
-              type="text"
-              className="pos-input-pill"
-              placeholder="Estado"
-              value={cliente ? (cliente.estado === "activo" ? "✅ Activo" : "🔴 Inactivo") : ""}
-              readOnly
-            />
-          </div>
+          {cliente ? (
+            <>
+              <div className="cliente-fila-datos">
+                <input className="pos-input-pill" readOnly value={cliente.cedula || ''} placeholder="Cedula" />
+                <input className="pos-input-pill" readOnly value={cliente.telefono || ''} placeholder="Telefono" />
+              </div>
 
-          <div className="cliente-fila-inferior">
-            <div className={`cliente-dias-banda ${diasClase}`}>
-              <span className="cliente-dias-titulo">
-                {cliente
-                  ? cliente.mensualidad?.activa
-                    ? `DÍAS FALTANTES: ${cliente.mensualidad?.diasRestantes || 0}`
-                    : "MENSUALIDAD VENCIDA"
-                  : "DÍAS FALTANTES: —"}
-              </span>
-              <span className="cliente-dias-entrenador">
-                Entrenador: {cliente ? cliente.entrenador || "—" : "—"}
-              </span>
-            </div>
+              <FlameStreak clienteId={cliente.id} />
 
-            <div className="cliente-pago-botones">
-              <button
-                className="pos-pill-btn"
-                disabled={!cliente}
-                onClick={() => cobrarMensualidad("mes")}
-              >
-                Pago
-                <br />
-                Mensualidad
-              </button>
-              <button
-                className="pos-pill-btn"
-                disabled={!cliente}
-                onClick={() => cobrarMensualidad("dia")}
-              >
-                Pago
-                <br />X Día
-              </button>
+              <div style={{ margin: '6px 0' }}>
+                {membresia ? (
+                  <div className="membresia-badge membresia-activa" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, borderLeft: '4px solid #10b981', background: '#f0fdf4' }}>
+                    <span style={{ fontSize: '1.3rem' }}>{membresia.estado === 'ACTIVA' ? '✅' : '⚠️'}</span>
+                    <div style={{ flex: 1 }}>
+                      <strong style={{ fontSize: '0.85rem' }}>{membresia.planNombre || 'Sin plan'}</strong>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Vence: {membresia.fechaVencimiento || '—'}</div>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 600, color: membresia.estado === 'ACTIVA' ? '#10b981' : '#ef4444' }}>{membresia.estado}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="membresia-badge membresia-sin" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, borderLeft: '4px solid #d1d5db', background: '#f9fafb' }}>
+                    <span style={{ fontSize: '1.3rem' }}>🚫</span>
+                    <div>
+                      <strong style={{ fontSize: '0.85rem' }}>Sin membresia activa</strong>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Registra un pago para activar</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, margin: '8px 0' }}>
+                {planes.filter(p => p.tipo === 'MEMBRESIA' && p.estado === 'ACTIVO').map(plan => (
+                  <button key={plan.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '10px 8px', border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}
+                    onClick={() => agregarAlCarrito(plan, 'plan')}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(59,130,246,0.15)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = 'none'; }}>
+                    <span style={{ fontSize: '1.2rem' }}>⭐</span>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#374151' }}>{plan.nombre}</span>
+                    <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>{COP(plan.precio)}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
+              <span style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }}>🔍</span>
+              Busca un cliente para ver su informacion
             </div>
-          </div>
+          )}
         </section>
 
-        {/* CARRITO Y TOTALES */}
         <section className="pos-panel pos-panel-carrito">
           <div className="carrito-columna">
-            <h3 className="carrito-titulo">Carrito de Venta</h3>
-            <div className="carrito-items">
+            <h3 className="carrito-titulo">Carrito ({carrito.length})</h3>
+            <div className="carrito-items" style={{ maxHeight: 200, overflow: 'auto' }}>
               {carrito.length === 0 ? (
-                <p className="carrito-vacio">No hay productos en el carrito</p>
-              ) : (
-                carrito.map((item) => (
-                  <div key={item.id} className="carrito-item-pill">
-                    <span className="item-nombre">
-                      {item.tipo === "mensualidad" && "⭐ "}
-                      {item.nombre}
-                    </span>
-                    {item.tipo === "producto" ? (
-                      <div className="item-controls">
-                        <button
-                          onClick={() => actualizarCantidad(item.id, item.cantidad - 1)}
-                          disabled={item.cantidad <= 1}
-                        >
-                          −
-                        </button>
-                        <span className="item-cantidad">{item.cantidad}</span>
-                        <button
-                          onClick={() => actualizarCantidad(item.id, item.cantidad + 1)}
-                          disabled={item.cantidad >= item.stock}
-                        >
-                          +
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="item-cantidad">1</span>
-                    )}
-                    <span className="item-subtotal">
-                      ${(item.precio * item.cantidad).toLocaleString()}
-                    </span>
-                    <button className="item-eliminar" onClick={() => eliminarDelCarrito(item.id)}>
-                      ✖
-                    </button>
-                  </div>
-                ))
-              )}
+                <p className="carrito-vacio">Vacio</p>
+              ) : carrito.map((item, idx) => (
+                <div key={`${item.tipo}-${item.id}-${idx}`} className="carrito-item-pill">
+                  <span className="item-nombre">{item.tipo === 'plan' ? '⭐ ' : ''}{item.nombre}</span>
+                  {item.tipo === 'producto' ? (
+                    <div className="item-controls">
+                      <button onClick={() => cambiarCantidad(idx, -1)} disabled={item.cantidad <= 1}>−</button>
+                      <span className="item-cantidad">{item.cantidad}</span>
+                      <button onClick={() => cambiarCantidad(idx, 1)}>+</button>
+                    </div>
+                  ) : <span className="item-cantidad">1</span>}
+                  <span className="item-subtotal">{COP(item.precio * item.cantidad)}</span>
+                  <button className="item-eliminar" onClick={() => eliminarDelCarrito(idx)}>✖</button>
+                </div>
+              ))}
             </div>
           </div>
 
           <div className="totales-columna">
             <div className="total-pill">
               <span>Total:</span>
-              <span className="total-pill-monto">${totalCarrito.toLocaleString()}</span>
+              <span className="total-pill-monto">{COP(total)}</span>
             </div>
-
             <div className="total-pill total-pill-metodo">
               <span>Pago:</span>
               <div className="metodo-pago-toggle">
-                <button
-                  className={`metodo-toggle-btn ${metodoPago === 'efectivo' ? 'active' : ''}`}
-                  onClick={() => setMetodoPago('efectivo')}
-                >
-                  <span className="metodo-icon">💵</span> Efectivo
-                </button>
-                <button
-                  className={`metodo-toggle-btn ${metodoPago === 'transferencia' ? 'active' : ''}`}
-                  onClick={() => setMetodoPago('transferencia')}
-                >
-                  <span className="metodo-icon">📲</span> Transferencia
-                </button>
+                {[['efectivo', '💵', 'Efectivo'], ['transferencia', '🏦', 'Transferencia'], ['tarjeta', '💳', 'Tarjeta']].map(([m, icon, label]) => (
+                  <button key={m} className={`metodo-toggle-btn ${metodoPago === m ? 'active' : ''}`} onClick={() => setMetodoPago(m)}>
+                    <span className="metodo-icon">{icon}</span> {label}
+                  </button>
+                ))}
               </div>
             </div>
-
-            <div className="total-pill total-pill-input">
-              <span>Recibido:</span>
-              <input
-                type="text"
-                value={formatearPrecioCOP(pagoRecibido)}
-                onChange={handlePagoChange}
-                placeholder="$ 0"
-                className="input-moneda-pos"
-                disabled={metodoPago !== 'efectivo'}
-              />
-            </div>
-
-            <div className="total-pill">
-              <span>Cambio:</span>
-              <span
-                className={`total-pill-monto ${cambio < 0 ? "cambio-insuficiente" : "cambio-correcto"}`}
-              >
-                ${cambio.toLocaleString()}
-              </span>
-            </div>
-
-            <button
-              className="realizar-venta-btn"
-              onClick={handleVenta}
-              disabled={carrito.length === 0 || cambio < 0 || loading}
-            >
-              {loading ? 'Procesando...' : 'Realizar Venta'}
+            {metodoPago === 'efectivo' && (
+              <div className="total-pill total-pill-input">
+                <span>Recibido:</span>
+                <input className="input-moneda-pos" type="text" placeholder="$ 0"
+                  value={montoRecibido ? '$ ' + Number(montoRecibido).toLocaleString('es-CO') : ''}
+                  onChange={e => setMontoRecibido(e.target.value.replace(/[^0-9]/g, ''))} />
+              </div>
+            )}
+            {cambio != null && (
+              <div className="total-pill">
+                <span>Cambio:</span>
+                <span className={`total-pill-monto ${cambio >= 0 ? 'cambio-correcto' : 'cambio-insuficiente'}`}>
+                  {cambio >= 0 ? COP(cambio) : `Falta ${COP(Math.abs(cambio))}`}
+                </span>
+              </div>
+            )}
+            <button className="realizar-venta-btn" onClick={procesarVenta}
+              disabled={procesando || carrito.length === 0}
+              style={{ opacity: procesando || carrito.length === 0 ? 0.5 : 1 }}>
+              {procesando ? 'Procesando...' : 'Realizar Venta'}
             </button>
           </div>
         </section>
       </div>
+
+      <style>{`
+        .streak-container { display: flex; align-items: center; gap: 6px; }
+        .streak-animating span { animation: firePulse 0.8s ease-in-out 2; }
+        @keyframes firePulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.3) rotate(5deg); } }
+        .membresia-badge { transition: all 0.2s; }
+      `}</style>
     </div>
   );
 }
