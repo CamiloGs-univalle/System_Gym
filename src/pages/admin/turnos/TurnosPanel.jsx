@@ -20,7 +20,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
-import { COP, formatDate, formatHora, formatCurrencyInput } from "../../../utils/formatters";
+import { COP, formatDate, formatHora, formatCurrencyInput, fechaLocalISO } from "../../../utils/formatters";
 import { turnoService } from "../../../services/turnoService";
 import { empleadosService } from "../../../services/empleadosService";
 import authService from "../../../services/authService";
@@ -34,7 +34,6 @@ import Calendario from "./Calendario";
 // CONSTANTES GLOBALES
 // ============================================================
 
-const hoy = new Date().toISOString().split("T")[0];
 
 // ✅ CORREGIDO: solo los 3 tipos que existen en el enum ShiftType del backend.
 export const TIPOS_TURNO = {
@@ -58,7 +57,7 @@ export const mapearTurno = (turno) => ({
     empleadoId: turno.receptionistId || turno.employeeId || turno.empleadoId || 0,
     nombreEmpleado: turno.employeeName || turno.nombreEmpleado || '',
     tipo: turno.type || turno.tipo || turno.shiftType || 'FULL_SHIFT',
-    fecha: turno.scheduledDate || turno.date || turno.fecha || turno.openedAt?.split('T')[0] || hoy,
+    fecha: turno.scheduledDate || turno.date || turno.fecha || turno.openedAt?.split('T')[0] || fechaLocalISO(),
     dia: turno.dia !== undefined ? turno.dia : new Date(turno.scheduledDate || turno.date || turno.openedAt || Date.now()).getDay() || 0,
     horaInicio: formatHora(turno.startTime) || formatHora(turno.horaInicio) || '06:00',
     horaFin: formatHora(turno.endTime) || formatHora(turno.horaFin) || '14:00',
@@ -80,6 +79,7 @@ export const mapearTurno = (turno) => ({
 // ============================================================
 
 export default function TurnosPanel() {
+    const hoy = fechaLocalISO(); // se recalcula en cada render (cambio de día con la app abierta)
     // Datos principales
     const [turnos, setTurnos] = useState([]);
     const [empleados, setEmpleados] = useState([]);
@@ -114,7 +114,7 @@ export default function TurnosPanel() {
 
     // Fecha por defecto para "Nuevo Turno" cuando se dispara desde una
     // celda del calendario (clic en "+ Agregar" de un día concreto).
-    const [fechaCrearDefault, setFechaCrearDefault] = useState(hoy);
+    const [fechaCrearDefault, setFechaCrearDefault] = useState(() => fechaLocalISO());
 
     const { usuario } = useAuthStore();
 
@@ -157,7 +157,7 @@ export default function TurnosPanel() {
             }
 
             if (!usuarioId) {
-                const storedUser = localStorage.getItem('gymcore-user');
+                const storedUser = localStorage.getItem('gymcore_user');
                 if (storedUser) {
                     try {
                         const parsed = JSON.parse(storedUser);

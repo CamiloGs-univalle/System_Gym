@@ -8,6 +8,10 @@ import authService from "./services/authService";
 import { hidratarAlmacenamiento } from "./services/storageSync";
 import CambiarPasswordObligatorio from "./components/system/CambiarPasswordObligatorio";
 import EstadoLicencia from "./components/system/EstadoLicencia";
+import Quiosco from "./pages/acceso/Quiosco";
+
+// La pantalla de ingreso (quiosco) se abre con ?modo=quiosco desde Recepción
+const MODO_QUIOSCO = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("modo") === "quiosco";
 
 const ROLES_ADMIN = ["ADMIN", "SUPER_ADMIN", "ADMINISTRADOR"];
 const ROLES_RECEPCION = ["RECEPTIONIST", "RECEPCION", "RECEPCIONISTA", "RECEPTION"];
@@ -74,6 +78,16 @@ function AppContent() {
   }
 
   if (!usuario) {
+    if (MODO_QUIOSCO) {
+      return (
+        <div className="kq-nosession">
+          <div>
+            <h1>Pantalla de ingreso</h1>
+            <p>Inicie sesión en la recepción y vuelva a abrir esta pantalla desde "Ingresos".</p>
+          </div>
+        </div>
+      );
+    }
     return <Login />;
   }
 
@@ -88,6 +102,10 @@ function AppContent() {
 
   if (!datosListos) {
     return <Cargando texto="Sincronizando información..." />;
+  }
+
+  if (MODO_QUIOSCO) {
+    return <Quiosco />;
   }
 
   const role = usuario.role?.toUpperCase() || "";

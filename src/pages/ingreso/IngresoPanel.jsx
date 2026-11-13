@@ -12,9 +12,8 @@ import ingresoService from "../../services/ingresoService";
 import { productosService } from "../../services/productosService";
 import { empleadosService } from "../../services/empleadosService";
 import useAuthStore from "../../store/authStore";
-import { COP, formatDateShort, formatDateTime, cleanCurrencyInput, formatCurrencyInput } from "../../utils/formatters";
+import { COP, formatDateShort, formatDateTime, cleanCurrencyInput, formatCurrencyInput, fechaLocalISO } from "../../utils/formatters";
 
-const hoy = new Date().toISOString().split("T")[0];
 
 const ESTADO_PEDIDO = {
   SCHEDULED: { label: "Programado", cls: "ingreso-badge-scheduled", icon: "📅" },
@@ -30,7 +29,9 @@ const ESTADO_INGRESO = {
 
 const formPedidoVacio = {
   description: "", categoryId: "", productId: "", quantity: 1,
-  estimatedCost: "", provider: "", scheduledDate: hoy, note: "",
+  estimatedCost: "", provider: "", note: "",
+  // Fecha de hoy al momento de usar el formulario (no la de cuando se abrió la app)
+  get scheduledDate() { return fechaLocalISO(); },
 };
 
 const formLlegadaVacio = { quantity: "", unitCost: "", provider: "", note: "" };
@@ -42,11 +43,13 @@ const formIngresoVacio = {
 };
 
 const formEgresoVacio = {
-  concept: "", category: "Servicios", amount: "", expenseDate: hoy, employeeId: "",
+  concept: "", category: "Servicios", amount: "", employeeId: "",
+  get expenseDate() { return fechaLocalISO(); },
   pagadoDeCaja: false,
 };
 
 export default function IngresoPanel() {
+  const hoy = fechaLocalISO();
   const usuario = useAuthStore((state) => state.usuario);
   const esAdmin = ["ADMIN", "SUPER_ADMIN", "ADMINISTRADOR"].includes((usuario?.role || "").toUpperCase());
 

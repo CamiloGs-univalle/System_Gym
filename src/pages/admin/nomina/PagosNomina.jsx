@@ -4,11 +4,11 @@
 // periodo) y se registra como egreso "Nómina" en Finanzas.
 // ============================================================
 import { useMemo, useState } from "react";
-import { COP, formatDate } from "../../../utils/formatters";
+import { COP, formatDate, fechaLocalISO } from "../../../utils/formatters";
 import { proximosPagosNomina, pagarPeriodo } from "../../../services/nomina/obligacionesNomina";
 import { historialNominaService, hoyISO } from "../../../services/nomina/nominaEngine";
 
-const caja = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 18 };
+const caja = { background: "#fff", border: "1px solid var(--sg-line)", borderRadius: 20, padding: 20, boxShadow: "var(--sg-shadow-sm)" };
 const th = { padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#374151", fontSize: "0.8rem" };
 const td = { padding: "10px 12px", borderBottom: "1px solid #f3f4f6", fontSize: "0.85rem" };
 
@@ -102,8 +102,7 @@ export default function PagosNomina({ empleados }) {
                     <td style={{ ...td, textAlign: "right", fontWeight: 600 }}>{COP(p.neto)}</td>
                     <td style={{ ...td, textAlign: "right", color: "#92400e" }}>{p.provision ? COP(p.provision) : "—"}</td>
                     <td style={td}>
-                      <button onClick={() => pagar(p)} disabled={pagando === p.clave}
-                        style={{ padding: "6px 12px", background: "#059669", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: "0.8rem" }}>
+                      <button onClick={() => pagar(p)} disabled={pagando === p.clave} className="sg-btn sg-btn-primary sg-btn-sm">
                         {pagando === p.clave ? "Registrando..." : "Registrar pago"}
                       </button>
                     </td>
@@ -153,7 +152,7 @@ export default function PagosNomina({ empleados }) {
 function sumar(fecha, dias) {
   const d = new Date(`${fecha}T12:00:00`);
   d.setDate(d.getDate() + dias);
-  return d.toISOString().slice(0, 10);
+  return fechaLocalISO(d);
 }
 
 function Dato({ titulo, valor, nota, color }) {

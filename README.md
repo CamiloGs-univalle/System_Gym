@@ -79,3 +79,29 @@ Si no se configura la llave pública, el licenciamiento está desactivado.
   (14 feb) y vacaciones, con un fondo de nómina para registrar lo que se aparta.
 - Los festivos de Colombia se calculan solos para cada año. El SMMLV, el auxilio de transporte y la UVT
   se actualizan cada enero en `src/services/nomina/nominaEngine.js`.
+
+## Fotos, huella y pantalla de ingreso
+
+- **Fotos:** en Clientes, botón de cámara: se toma con la cámara web o se sube un archivo (JPG, PNG o
+  WEBP). Se guardan en `%USERPROFILE%\.gymcore\photos`; cada respaldo deja además `fotos.zip` con todas.
+- **Huella:** en Clientes, botón de huella. Exige marcar la autorización del cliente (Ley 1581 de
+  2012, dato sensible). Se guarda la plantilla del lector, no la imagen del dedo.
+- **Ingresos:** en Recepción → Ingresos, por cédula (o huella cuando haya lector). Valida el plan y
+  registra cada ingreso, permitido o negado.
+- **Pantalla de ingreso (quiosco):** botón "Pantalla de ingreso". Se abre en pantalla completa en el
+  segundo monitor si existe. Muestra foto, plan, días restantes y si la persona puede pasar.
+
+### Lector de huella
+
+Sin lector, el sistema funciona en **modo de prueba**: el ingreso es por cédula. El lector recomendado
+es un **ZKTeco USB (ZK9500 o SLK20R)** con el *ZKFinger SDK for Windows*. La conexión está preparada en
+`electron/biometria/zkteco.js` y se completa cuando el lector esté disponible para probarlo. Para
+activarlo se crea `%USERPROFILE%\.gymcore\lector.json` con `{ "proveedor": "ZKTECO" }`.
+
+## Panel web (consulta desde el celular)
+
+La carpeta `panel-web/` es un servidor aparte que se publica en internet. El PC del gimnasio le envía
+cada 10 minutos un resumen (ventas, turnos, clientes por vencer, inventario, gastos y pagos de nómina)
+y el administrador lo consulta desde el celular y descarga los desprendibles de pago en PDF.
+Es solo de consulta. Instalación y publicación: `panel-web/README.md`. Se activa en
+**Configuración → Panel web**.

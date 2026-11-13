@@ -11,10 +11,10 @@ import {
 } from "../../../services/nomina/obligacionesNomina";
 import { hoyISO } from "../../../services/nomina/nominaEngine";
 
-const caja = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 18 };
+const caja = { background: "#fff", border: "1px solid var(--sg-line)", borderRadius: 20, padding: 20, boxShadow: "var(--sg-shadow-sm)" };
 const th = { padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#374151", fontSize: "0.8rem" };
 const td = { padding: "10px 12px", borderBottom: "1px solid #f3f4f6", fontSize: "0.85rem", verticalAlign: "top" };
-const btn = (bg) => ({ padding: "6px 10px", background: bg, color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: "0.78rem" });
+const btn = (bg) => ({ height: 34, padding: "0 12px", background: bg === "#059669" ? "var(--sg-gradient)" : bg, color: "#fff", border: "none", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 650 });
 
 const ICONO = { PILA: "Seguridad social", PRIMA: "Prima", CESANTIAS: "Cesantías", INTERESES: "Intereses", VACACIONES: "Vacaciones" };
 

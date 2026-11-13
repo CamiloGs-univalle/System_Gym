@@ -254,6 +254,34 @@ export const ventasService = {
     }
   },
 
+  /**
+   * Cobro único: productos y planes en una sola transacción del servidor.
+   * `llave` (Idempotency-Key) debe ser la misma si se reintenta el mismo cobro:
+   * así un corte de conexión no produce un cobro doble.
+   */
+  async cobrar({ llave, shiftId, metodoPago, efectivoRecibido = 0, productos = [], planes = [] }) {
+    const { data } = await api.post('/checkout', {
+      shiftId,
+      paymentMethod: metodoPago,
+      cashReceived: metodoPago === 'CASH' ? (Number(efectivoRecibido) || 0) : 0,
+      products: productos,
+      plans: planes,
+    }, { headers: { 'Idempotency-Key': llave }, timeout: 30000 });
+    return data?.data ?? null;
+  },
+
+  /** Ventas de un día, incluidas las anuladas (solo administrador). */
+  async ventasDelDiaAdmin(fecha) {
+    const { data } = await api.get('/sales/admin/day', { params: fecha ? { date: fecha } : {} });
+    return data?.data || [];
+  },
+
+  /** Anula una venta (solo administrador). */
+  async anular(id, motivo) {
+    const { data } = await api.post(`/sales/${id}/void`, { reason: motivo });
+    return data;
+  },
+
   // ----------------------------------------------------------
   // MÉTODOS DE CONSULTA PARA CIERRE
   // ----------------------------------------------------------

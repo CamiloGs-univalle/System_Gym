@@ -4,6 +4,12 @@ import clientesService from "../../services/clientesService";
 import { planesService } from "../../services/gimnasio/planesService";
 import { formatCurrencyInput } from "../../utils/formatters";
 import "../../styles/recepcionCSS/clientes.css";
+import "./clientes-panel.css";
+import FotoCliente from "../../components/clientes/FotoCliente";
+import CapturaFoto from "../../components/clientes/CapturaFoto";
+import RegistroHuella from "../../components/clientes/RegistroHuella";
+import RenovarPlan from "../../components/clientes/RenovarPlan";
+import { Users, UserPlus, Search, X, Eye, Pencil, Trash2, RotateCcw, Camera, Fingerprint, CheckCircle2, AlertTriangle, XCircle, UserX, CalendarPlus } from "lucide-react";
 
 const AVATAR_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6'];
 
@@ -34,6 +40,15 @@ export default function ClientesPanel() {
   const [vistaDetalle, setVistaDetalle] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [notif, setNotif] = useState(null);
+  const [clienteFoto, setClienteFoto] = useState(null);
+  const [clienteHuella, setClienteHuella] = useState(null);
+  const [clienteRenovar, setClienteRenovar] = useState(null);
+
+  // Al cambiar la foto se actualiza la lista sin recargar todo
+  const fotoActualizada = (id, version) => {
+    setClientesList((lista) => lista.map((c) => (c.id === id ? { ...c, fotoVersion: version } : c)));
+    setClienteSeleccionado((c) => (c && c.id === id ? { ...c, fotoVersion: version } : c));
+  };
 
   const mostrarNotif = (tipo, texto) => {
     setNotif({ tipo, texto });
@@ -187,104 +202,97 @@ export default function ClientesPanel() {
         </div>
       )}
 
-      <div className="clientes-modern-header">
-        <div className="header-title-section">
-          <div className="header-icon-wrapper"><span className="header-icon">👥</span></div>
-          <div><h2>Gestion de Clientes</h2><p className="header-subtitle">{clientesList.length} clientes registrados</p></div>
-        </div>
-        <Button variant="success" onClick={abrirNuevoCliente} className="btn-nuevo-cliente"><span>➕</span> Nuevo Cliente</Button>
+      <div className="cp-head">
+        <p>{clientesList.length} registrados · foto, huella y estado del plan de cada persona</p>
+        <button className="sg-btn sg-btn-primary sg-btn-lg" onClick={abrirNuevoCliente}><UserPlus /> Nuevo cliente</button>
       </div>
 
-      <div className="stats-grid">
-        <div className="stat-card stat-total"><div className="stat-icon">📊</div><div className="stat-info"><span className="stat-number">{clientesList.length}</span><span className="stat-label">Total</span></div></div>
-        <div className="stat-card stat-activos"><div className="stat-icon">✅</div><div className="stat-info"><span className="stat-number">{totalActivos}</span><span className="stat-label">Activos</span></div></div>
-        <div className="stat-card stat-por-vencer"><div className="stat-icon">⚠️</div><div className="stat-info"><span className="stat-number">{totalPorVencer}</span><span className="stat-label">Por Vencer</span></div></div>
-        <div className="stat-card stat-inactivos"><div className="stat-icon">🔴</div><div className="stat-info"><span className="stat-number">{totalVencidos + totalInactivos}</span><span className="stat-label">Vencidos / Inactivos</span></div></div>
+      <div className="cp-stats">
+        <button className={`cp-stat ${filtroEstado === "todos" ? "on" : ""}`} onClick={() => setFiltroEstado("todos")}>
+          <Users /><span><b>{clientesList.length}</b>Total</span>
+        </button>
+        <button className={`cp-stat ok ${filtroEstado === "activos" ? "on" : ""}`} onClick={() => setFiltroEstado("activos")}>
+          <CheckCircle2 /><span><b>{totalActivos}</b>Activos</span>
+        </button>
+        <div className="cp-stat warn"><AlertTriangle /><span><b>{totalPorVencer}</b>Por vencer</span></div>
+        <div className="cp-stat bad"><XCircle /><span><b>{totalVencidos}</b>Vencidos</span></div>
+        <button className={`cp-stat muted ${filtroEstado === "inactivos" ? "on" : ""}`} onClick={() => setFiltroEstado("inactivos")}>
+          <UserX /><span><b>{totalInactivos}</b>Inactivos</span>
+        </button>
       </div>
 
-      <div className="clientes-modern-filters">
-        <div className="search-wrapper">
-          <span className="search-icon">🔍</span>
-          <input type="text" placeholder="Buscar por nombre, cedula o telefono..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="search-modern-input" />
-          {searchTerm && <button className="search-clear" onClick={() => setSearchTerm('')}>✕</button>}
+      <div className="cp-filters">
+        <div className="cp-search">
+          <Search />
+          <input type="text" placeholder="Buscar por nombre, cédula o teléfono" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          {searchTerm && <button onClick={() => setSearchTerm('')} aria-label="Limpiar"><X /></button>}
         </div>
-        <div className="filter-group">
-          <select className="filter-select" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
-            <option value="todos">Todos los estados</option>
-            <option value="activos">✅ Activos</option>
-            <option value="inactivos">🔴 Inactivos</option>
-          </select>
-          <select className="filter-select" value={filtroMembresia} onChange={e => setFiltroMembresia(e.target.value)}>
-            <option value="todas">Todas las membresias</option>
-            <option value="monthly">Mensual</option>
-            <option value="quarterly">Trimestral</option>
-            <option value="annual">Anual</option>
-            <option value="daily">Diario</option>
-          </select>
-        </div>
+        <select className="sg-select cp-select" value={filtroMembresia} onChange={e => setFiltroMembresia(e.target.value)}>
+          <option value="todas">Todos los planes</option>
+          <option value="monthly">Mensual</option>
+          <option value="quarterly">Trimestral</option>
+          <option value="annual">Anual</option>
+          <option value="daily">Diario</option>
+        </select>
       </div>
 
-      <div className="clientes-modern-table-wrapper">
-        <table className="clientes-modern-table">
+      <div className="sg-card cp-table-card">
+        <table className="sg-table">
           <thead>
             <tr>
-              <th onClick={() => cambiarOrden('nombre')} className="sortable">Cliente {orden.campo === 'nombre' && (orden.direccion === 'asc' ? '↑' : '↓')}</th>
+              <th onClick={() => cambiarOrden('nombre')} style={{ cursor: "pointer" }}>Cliente {orden.campo === 'nombre' && (orden.direccion === 'asc' ? '↑' : '↓')}</th>
               <th>Contacto</th>
-              <th>Membresia</th>
-              <th>Vencimiento</th>
+              <th>Plan</th>
+              <th>Vence</th>
               <th>Estado</th>
-              <th>Acciones</th>
+              <th style={{ textAlign: "right" }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {filteredClientes.length === 0 && (
-              <tr><td colSpan={6} className="empty-state"><div className="empty-state-content"><span className="empty-icon">🔍</span><p>No se encontraron clientes</p></div></td></tr>
+              <tr><td colSpan={6}><div className="sg-empty"><Search /><span>No se encontraron clientes</span></div></td></tr>
             )}
             {filteredClientes.map(cliente => {
               const mem = cliente.membresia;
               const estado = !cliente.activo ? 'INACTIVO' : (mem?.estado || 'NINGUNA');
-              const colorEstado = ESTADO_COLORS[estado] || '#9ca3af';
-              const avatarColor = getAvatarColor(cliente.nombre);
+              const badge = { ACTIVA: ["sg-badge-success", "Activo"], POR_VENCER: ["sg-badge-warning", "Por vencer"], VENCIDA: ["sg-badge-danger", "Vencido"], INACTIVO: ["sg-badge-muted", "Inactivo"] }[estado] || ["sg-badge-muted", "Sin plan"];
 
               return (
-                <tr key={cliente.id} className="client-row" onClick={() => verDetalle(cliente)}>
+                <tr key={cliente.id} className={`cp-row ${!cliente.activo ? "is-off" : ""}`} onClick={() => verDetalle(cliente)}>
                   <td>
-                    <div className="cliente-info">
-                      <div className="cliente-avatar" style={{ backgroundColor: avatarColor }}>{getInitials(cliente.nombre)}</div>
-                      <div><div className="cliente-nombre">{cliente.nombre}</div><div className="cliente-cedula">Ced: {cliente.cedula}</div></div>
+                    <div className="cp-person">
+                      <FotoCliente id={cliente.id} nombre={cliente.nombre} version={cliente.fotoVersion} size={46} />
+                      <div>
+                        <div className="cp-name">{cliente.nombre}</div>
+                        <div className="cp-sub">C.C. {cliente.cedula}</div>
+                      </div>
                     </div>
                   </td>
                   <td>
-                    <div className="contact-info">
-                      <div className="contact-item"><span className="contact-icon">📱</span><span>{cliente.telefono || '—'}</span></div>
-                      {cliente.email && <div className="contact-item"><span className="contact-icon">✉️</span><span className="contact-email">{cliente.email}</span></div>}
-                    </div>
+                    <div className="cp-sub cp-strong">{cliente.telefono || '—'}</div>
+                    {cliente.email && <div className="cp-sub">{cliente.email}</div>}
                   </td>
                   <td>
-                    <div className="membresia-info">
-                      {mem ? (
-                        <>
-                          <span className="membresia-badge">{MEMBRESIA_LABELS[mem.tipo] || mem.tipo}</span>
-                          <span className="dias-restantes" style={{ color: colorEstado }}>{mem.diasRestantes} dias</span>
-                        </>
-                      ) : <span className="membresia-badge" style={{ background: '#f3f4f6' }}>Sin membresia</span>}
-                    </div>
+                    {mem ? (
+                      <>
+                        <span className="sg-badge sg-badge-info sg-badge-plain">{MEMBRESIA_LABELS[mem.tipo] || mem.tipo}</span>
+                        <div className="cp-sub" style={{ marginTop: 4 }}>{mem.diasRestantes} días restantes</div>
+                      </>
+                    ) : <span className="cp-sub">Sin plan</span>}
                   </td>
-                  <td><span className="fecha-info">{mem?.fechaVencimiento ? formatDate(mem.fechaVencimiento) : '—'}</span></td>
+                  <td><span className="cp-sub cp-strong">{mem?.fechaVencimiento ? formatDate(mem.fechaVencimiento) : '—'}</span></td>
+                  <td><span className={`sg-badge ${badge[0]}`}>{badge[1]}</span></td>
                   <td>
-                    <span className="estado-badge-modern" style={{ backgroundColor: colorEstado }}>
-                      <span className="estado-dot" />
-                      {estado === 'ACTIVA' ? 'Activa' : estado === 'POR_VENCER' ? 'Por vencer' : estado === 'VENCIDA' ? 'Vencida' : 'Sin memb.'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="acciones-modern" onClick={e => e.stopPropagation()}>
-                      <button className="action-btn action-view" title="Ver detalles" onClick={() => verDetalle(cliente)}>👁️</button>
-                      <button className="action-btn action-edit" title="Editar" onClick={() => abrirEdicion(cliente)}>✏️</button>
+                    <div className="cp-actions" onClick={e => e.stopPropagation()}>
+                      {cliente.activo && <button className="cp-act" title="Renovar plan" onClick={() => setClienteRenovar(cliente)}><CalendarPlus /></button>}
+                      <button className="cp-act" title="Foto" onClick={() => setClienteFoto(cliente)}><Camera /></button>
+                      <button className="cp-act" title="Huella" onClick={() => setClienteHuella(cliente)}><Fingerprint /></button>
+                      <button className="cp-act" title="Ver detalle" onClick={() => verDetalle(cliente)}><Eye /></button>
+                      <button className="cp-act" title="Editar" onClick={() => abrirEdicion(cliente)}><Pencil /></button>
                       {cliente.activo ? (
-                        <button className="action-btn action-delete" title="Desactivar" onClick={() => setClienteAEliminar(cliente)}>🗑️</button>
+                        <button className="cp-act danger" title="Desactivar" onClick={() => setClienteAEliminar(cliente)}><Trash2 /></button>
                       ) : (
-                        <button className="action-btn action-toggle" title="Reactivar" onClick={() => reactivarCliente(cliente)}>🔄</button>
+                        <button className="cp-act ok" title="Reactivar" onClick={() => reactivarCliente(cliente)}><RotateCcw /></button>
                       )}
                     </div>
                   </td>
@@ -295,12 +303,33 @@ export default function ClientesPanel() {
         </table>
       </div>
 
+      {clienteFoto && (
+        <CapturaFoto
+          cliente={clienteFoto}
+          onCerrar={() => setClienteFoto(null)}
+          onGuardada={(v) => { fotoActualizada(clienteFoto.id, v); mostrarNotif('exito', v ? 'Foto guardada' : 'Foto eliminada'); }}
+        />
+      )}
+      {clienteRenovar && (
+        <RenovarPlan
+          cliente={clienteRenovar}
+          onCerrar={() => setClienteRenovar(null)}
+          onListo={() => { mostrarNotif('exito', 'Plan renovado y cobrado'); cerrarModal(); cargarClientes(); }}
+        />
+      )}
+      {clienteHuella && (
+        <RegistroHuella cliente={clienteHuella} onCerrar={() => setClienteHuella(null)} />
+      )}
+
       {vistaDetalle && clienteSeleccionado && (
         <div className="modal-overlay" onClick={cerrarModal}>
           <div className="modal-card modal-detalle" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={cerrarModal}>✕</button>
             <div className="detalle-header">
-              <div className="detalle-avatar-large" style={{ backgroundColor: getAvatarColor(clienteSeleccionado.nombre) }}>{getInitials(clienteSeleccionado.nombre)}</div>
+              <div className="cp-detail-photo">
+                <FotoCliente id={clienteSeleccionado.id} nombre={clienteSeleccionado.nombre} version={clienteSeleccionado.fotoVersion} size={104} radius={30} />
+                <button className="cp-photo-btn" title="Tomar o cambiar foto" onClick={() => setClienteFoto(clienteSeleccionado)}><Camera /></button>
+              </div>
               <div className="detalle-header-info">
                 <h3>{clienteSeleccionado.nombre}</h3>
                 <p className="detalle-sub">Ced: {clienteSeleccionado.cedula}</p>
@@ -327,6 +356,8 @@ export default function ClientesPanel() {
             </div>
             {clienteSeleccionado.notas && <div className="detalle-notas"><label>Notas</label><p>{clienteSeleccionado.notas}</p></div>}
             <div className="detalle-acciones">
+              {clienteSeleccionado.activo && <button className="sg-btn sg-btn-primary" onClick={() => setClienteRenovar(clienteSeleccionado)}><CalendarPlus /> Renovar plan</button>}
+              <button className="sg-btn sg-btn-soft" onClick={() => setClienteHuella(clienteSeleccionado)}><Fingerprint /> Huella</button>
               <Button variant="primary" onClick={() => { cerrarModal(); abrirEdicion(clienteSeleccionado); }}>✏️ Editar</Button>
               {clienteSeleccionado.activo ? (
                 <Button variant="danger" onClick={() => { cerrarModal(); setClienteAEliminar(clienteSeleccionado); }}>🗑️ Desactivar</Button>

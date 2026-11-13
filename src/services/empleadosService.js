@@ -30,8 +30,28 @@ const toBackendFormat = (data) => {
         hireDate: data.fechaIngreso || null,
         contractType: data.tipoVinculacion || 'LABORAL',
         arlRiskLevel: Number(data.riesgoARL) || 1,
+        // Usuario del sistema ligado (recepcionistas). Si no viene, el backend conserva el actual.
+        userId: data.userId || null,
     };
 };
+
+/** Mensaje entendible a partir del error normalizado de api.js */
+const mensajeError = (error, porDefecto) => {
+    if (error?.status === 409 || error?.errorCode === 'DUPLICATE_USERNAME') {
+        return error?.message || 'Ese nombre de usuario ya existe. Use otro.';
+    }
+    if (error?.status === 403) return 'Solo el administrador puede gestionar usuarios.';
+    return error?.mensajeUsuario || error?.message || porDefecto;
+};
+
+/** Reglas de contraseña (las mismas que exige el backend) */
+export function validarPassword(password) {
+    if (!password || password.length < 8) return 'La contraseña debe tener al menos 8 caracteres.';
+    if (!/[a-zA-ZÁÉÍÓÚáéíóúÑñ]/.test(password) || !/\d/.test(password)) {
+        return 'La contraseña debe tener letras y números.';
+    }
+    return null;
+}
 
 /**
  * Convierte datos del backend al formato del frontend
@@ -133,7 +153,7 @@ export const empleadosService = {
                 try {
                     const userPayload = {
                         fullName: datos.nombre,
-                        username: datos.username,
+                        username: datos.username.trim(),
                         password: datos.password,
                         role: "RECEPTIONIST",
                         active: true
@@ -149,23 +169,7 @@ export const empleadosService = {
                     console.log("📌 User ID obtenido:", userId);
                     
                 } catch (userError) {
-                    console.error("❌ Error al crear usuario:", userError);
-                    
-                    if (userError.response) {
-                        const status = userError.response.status;
-                        const data = userError.response.data;
-                        
-                        if (status === 409 || data?.code === "DUPLICATE_USERNAME") {
-                            throw new Error(`❌ El usuario "${datos.username}" ya existe. Por favor, usa otro nombre de usuario.`);
-                        }
-                        
-                        if (status === 403) {
-                            throw new Error("❌ No tienes permisos para crear usuarios. Solo los Administradores pueden hacer esto.");
-                        }
-                        
-                        throw new Error(data?.message || "Error al crear el usuario");
-                    }
-                    throw userError;
+                    throw new Error(mensajeError(userError, 'No se pudo crear el usuario.'));
                 }
             }
             
@@ -269,6 +273,49 @@ export const empleadosService = {
         } catch (error) {
             console.error(`❌ Error al cambiar estado de empleado ${id}:`, error);
             throw error;
+        }
+    },
+
+    /** Nombre de usuario actual de un usuario del sistema (null si no se puede leer) */
+    async obtenerUsername(userId) {
+        if (!userId) return null;
+        try {
+            const response = await api.get(`/users/${userId}`);
+            return (response.data?.data || response.data)?.username || null;
+        } catch {
+            return null;
+        }
+    },
+
+    /**
+     * Crea o actualiza el usuario con el que un recepcionista entra al sistema.
+     * - Sin userId: lo crea (la contraseña es obligatoria) y devuelve su id.
+     * - Con userId: actualiza nombre, usuario y estado; si hay contraseña nueva, la cambia.
+     */
+    async guardarUsuario({ userId, nombre, username, password, activo }) {
+        try {
+            if (!userId) {
+                const r = await api.post('/users', {
+                    fullName: nombre,
+                    username: username.trim(),
+                    password,
+                    role: 'RECEPTIONIST',
+                    active: activo !== false,
+                });
+                return (r.data?.data || r.data).id;
+            }
+            await api.put(`/users/${userId}`, {
+                fullName: nombre,
+                username: username.trim(),
+                role: 'RECEPTIONIST',
+                active: activo !== false,
+            });
+            if (password) {
+                await api.patch(`/users/${userId}/password`, { newPassword: password });
+            }
+            return userId;
+        } catch (error) {
+            throw new Error(mensajeError(error, 'No se pudo guardar el usuario.'));
         }
     },
 

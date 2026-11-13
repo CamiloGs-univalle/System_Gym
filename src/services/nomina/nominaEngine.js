@@ -1,4 +1,5 @@
 import { guardarSincronizado } from '../storageSync';
+import { fechaLocalISO } from "../../utils/formatters";
 // ============================================================
 // MOTOR DE NÓMINA COLOMBIANA 2026
 // Parametrizable por fecha (cambios legislativos)
@@ -29,6 +30,10 @@ const PARAMETROS = [
   { codigo: 'RECARGO_HE_DIURNA', descripcion: 'Recargo hora extra diurna', vigenciaDesde: '2025-01-01', valor: 0.25 },
   { codigo: 'RECARGO_HE_NOCTURNA', descripcion: 'Recargo hora extra nocturna', vigenciaDesde: '2025-01-01', valor: 0.75 },
   { codigo: 'RECARGO_NOCTURNO', descripcion: 'Recargo trabajo nocturno', vigenciaDesde: '2025-01-01', valor: 0.35 },
+  // Ley 2466 de 2025: el trabajo nocturno empieza a las 7:00 p. m. desde el 25 de diciembre de 2025 (antes 9:00 p. m.)
+  { codigo: 'HORA_INICIO_NOCTURNA', descripcion: 'Hora en que empieza el trabajo nocturno', vigenciaDesde: '2025-12-25', valor: 19 },
+  { codigo: 'HORA_INICIO_NOCTURNA', descripcion: 'Hora en que empieza el trabajo nocturno', vigenciaDesde: '2025-01-01', vigenciaHasta: '2025-12-24', valor: 21 },
+  { codigo: 'HORA_FIN_NOCTURNA', descripcion: 'Hora en que termina el trabajo nocturno', vigenciaDesde: '2025-01-01', valor: 6 },
   { codigo: 'RECARGO_DOMINICAL', descripcion: 'Recargo dominical/festivo', vigenciaDesde: '2026-07-01', vigenciaHasta: '2027-06-30', valor: 0.90 },
   { codigo: 'RECARGO_DOMINICAL', descripcion: 'Recargo dominical/festivo', vigenciaDesde: '2025-07-01', vigenciaHasta: '2026-06-30', valor: 0.80 },
   { codigo: 'RECARGO_DOMINICAL', descripcion: 'Recargo dominical/festivo', vigenciaDesde: '2027-07-01', valor: 1.00 },
@@ -121,7 +126,7 @@ const TABLA_ARL = [
 // FUNCIÓN PRINCIPAL: OBTENER PARÁMETRO VIGENTE
 // ============================================================
 export function obtenerParametro(codigo, fecha) {
-  const fechaEval = fecha || new Date().toISOString().split('T')[0];
+  const fechaEval = fecha || fechaLocalISO();
   const params = PARAMETROS
     .filter(p => p.codigo === codigo && p.vigenciaDesde <= fechaEval)
     .filter(p => !p.vigenciaHasta || p.vigenciaHasta >= fechaEval)
@@ -156,15 +161,52 @@ export function calcularValorHoraOrdinaria(salarioMensual, fecha, jornadaSemanal
 // ============================================================
 // CÁLCULO DE RECARGOS
 // ============================================================
-export function calcularRecargoHora(fecha, horaInicio) {
-  const horaNum = typeof horaInicio === 'string' ? parseInt(horaInicio.split(':')[0], 10) : horaInicio;
-  const esNocturna = horaNum >= 21 || horaNum < 6;
-  const dominicalesFestivos = esDescansoObligatorio(fecha);
+/** true si la hora (0-23, puede tener decimales) es nocturna en esa fecha. */
+export function esHoraNocturna(hora, fecha) {
+  const inicio = obtenerParametro('HORA_INICIO_NOCTURNA', fecha) ?? 19;
+  const fin = obtenerParametro('HORA_FIN_NOCTURNA', fecha) ?? 6;
+  const h = ((hora % 24) + 24) % 24;
+  return h >= inicio || h < fin;
+}
 
-  if (dominicalesFestivos && esNocturna) return { tipo: 'DOMINICAL_NOCTURNA', recargo: 0.90, factor: 1.90 };
-  if (dominicalesFestivos && !esNocturna) return { tipo: 'DOMINICAL_DIURNA', recargo: 0.90, factor: 1.90 };
-  if (esNocturna) return { tipo: 'NOCTURNA', recargo: 0.35, factor: 1.35 };
-  return { tipo: 'DIURNA', recargo: 0, factor: 1.0 };
+/**
+ * Recargo de una hora ordinaria según el día y la hora.
+ * El recargo dominical/festivo y el nocturno se suman (hora dominical nocturna).
+ * Validar con el contador del gimnasio.
+ */
+export function calcularRecargoHora(fecha, horaInicio) {
+  const horaNum = typeof horaInicio === 'string'
+    ? (() => { const [h, m = 0] = horaInicio.split(':').map(Number); return h + m / 60; })()
+    : horaInicio;
+  const esNocturna = esHoraNocturna(horaNum, fecha);
+  const dominicalesFestivos = esDescansoObligatorio(fecha);
+  const dom = dominicalesFestivos ? (obtenerParametro('RECARGO_DOMINICAL', fecha) || 0) : 0;
+  const noc = esNocturna ? (obtenerParametro('RECARGO_NOCTURNO', fecha) || 0) : 0;
+  const recargo = Math.round((dom + noc) * 10000) / 10000;
+  const tipo = dominicalesFestivos ? (esNocturna ? 'DOMINICAL_NOCTURNA' : 'DOMINICAL_DIURNA') : (esNocturna ? 'NOCTURNA' : 'DIURNA');
+  return { tipo, recargo, factor: 1 + recargo };
+}
+
+/**
+ * Reparte las horas de un turno en ordinarias/extra y diurnas/nocturnas, minuto a minuto.
+ * Las horas extra son las últimas del turno (después de la jornada máxima diaria).
+ * Un turno que pasa la medianoche (22:00 a 06:00) se cuenta completo.
+ */
+export function clasificarHorasTurno(fecha, horaInicio, horaFin, jornadaMaxDia = 8) {
+  const aMin = (t) => { const [h, m = 0] = String(t).split(':').map(Number); return h * 60 + m; };
+  const ini = aMin(horaInicio);
+  let fin = aMin(horaFin);
+  if (fin <= ini) fin += 24 * 60;
+  const limiteOrd = ini + Math.round(jornadaMaxDia * 60);
+  const r = { ordDiurnas: 0, ordNocturnas: 0, extraDiurnas: 0, extraNocturnas: 0 };
+  for (let m = ini; m < fin; m++) {
+    const nocturna = esHoraNocturna(m / 60, fecha);
+    const extra = m >= limiteOrd;
+    const clave = extra ? (nocturna ? 'extraNocturnas' : 'extraDiurnas') : (nocturna ? 'ordNocturnas' : 'ordDiurnas');
+    r[clave] += 1;
+  }
+  for (const k of Object.keys(r)) r[k] = Math.round((r[k] / 60) * 100) / 100;
+  return r;
 }
 
 export function calcularFactorHoraExtra(esNocturna, fecha) {
@@ -247,9 +289,9 @@ export function calcularAportesEmpleador(baseSaludPension, baseARL, riesgoARL = 
 // ============================================================
 // CÁLCULO DE DEDUCCIONES TRABAJADOR
 // ============================================================
-export function calcularDeducciones(baseSaludPension, retencionFuente = 0, deduccionesVoluntarias = []) {
-  const salud = baseSaludPension * (obtenerParametro('SALUD_TRABAJADOR') || 0.04);
-  const pension = baseSaludPension * (obtenerParametro('PENSION_TRABAJADOR') || 0.04);
+export function calcularDeducciones(baseSaludPension, retencionFuente = 0, deduccionesVoluntarias = [], fecha = null) {
+  const salud = baseSaludPension * (obtenerParametro('SALUD_TRABAJADOR', fecha) || 0.04);
+  const pension = baseSaludPension * (obtenerParametro('PENSION_TRABAJADOR', fecha) || 0.04);
 
   const voluntarias = deduccionesVoluntarias.reduce((sum, d) => sum + (d.valor || 0), 0);
 
@@ -312,7 +354,7 @@ export function calcularRetencionFuente(baseGravableMensual, deduccionesLey, fec
 //   deducciones, aportes ni prestaciones (el contratista cotiza por su cuenta).
 // ============================================================
 export function liquidarNominaIndividual(empleado, novedades = {}, fecha = null, opciones = {}) {
-  const fechaLiq = fecha || opciones.periodo?.hasta || new Date().toISOString().split('T')[0];
+  const fechaLiq = fecha || opciones.periodo?.hasta || fechaLocalISO();
   const dias = Math.max(0, Math.min(30, opciones.periodo?.dias ?? 30));
   const fraccion = dias / 30;
   const esContratista = empleado.tipoVinculacion === 'PRESTACION_SERVICIOS';
@@ -354,7 +396,7 @@ export function liquidarNominaIndividual(empleado, novedades = {}, fecha = null,
 
   const deducciones = esContratista
     ? { salud: 0, pension: 0, retencionFuente: Math.round(novedades.retencionFuente || 0), voluntarias: 0, total: Math.round(novedades.retencionFuente || 0) }
-    : calcularDeducciones(baseSaludPension, novedades.retencionFuente || 0, novedades.deduccionesVoluntarias || []);
+    : calcularDeducciones(baseSaludPension, novedades.retencionFuente || 0, novedades.deduccionesVoluntarias || [], fechaLiq);
 
   // 3. Neto a pagar
   const netoPagar = totalDevengado - deducciones.total;
@@ -429,7 +471,7 @@ export function liquidarNominaMensual(empleados, novedadesPorEmpleado = {}, fech
   });
 
   return {
-    fechaLiquidacion: fecha || new Date().toISOString().split('T')[0],
+    fechaLiquidacion: fecha || fechaLocalISO(),
     totalEmpleados: resultados.length,
     totalDevengados: resultados.reduce((s, r) => s + r.devengados.total, 0),
     totalDeducciones: resultados.reduce((s, r) => s + r.deducciones.total, 0),
@@ -587,6 +629,43 @@ export function proximoPeriodo(empleado, config = leerConfigNomina()) {
 // ============================================================
 // HISTORIAL / PAGOS
 // ============================================================
+/**
+ * Conceptos del pago para el desprendible: lo que se le paga y lo que se le
+ * descuenta al empleado (sin aportes del empleador ni prestaciones).
+ */
+export function detalleDesprendible(resultado) {
+  if (!resultado?.devengados) return null;
+  const d = resultado.devengados;
+  const dias = resultado.periodo?.dias ?? 30;
+  const esContratista = resultado.tipoVinculacion === 'PRESTACION_SERVICIOS';
+  const horas = (n) => `${n} h`;
+  const devengados = [
+    { concepto: `${esContratista ? 'Honorarios' : 'Salario básico'} (${dias} días)`, valor: d.salarioBase },
+    d.horasExtrasDiurnas?.valor > 0 && { concepto: `Horas extra diurnas (${horas(d.horasExtrasDiurnas.cantidad)})`, valor: d.horasExtrasDiurnas.valor },
+    d.horasExtrasNocturnas?.valor > 0 && { concepto: `Horas extra nocturnas (${horas(d.horasExtrasNocturnas.cantidad)})`, valor: d.horasExtrasNocturnas.valor },
+    d.recargoNocturno?.valor > 0 && { concepto: `Recargo nocturno (${horas(d.recargoNocturno.cantidad)})`, valor: d.recargoNocturno.valor },
+    d.dominicales?.valor > 0 && { concepto: `Horas dominicales (${horas(d.dominicales.cantidad)})`, valor: d.dominicales.valor },
+    d.festivos?.valor > 0 && { concepto: `Horas festivas (${horas(d.festivos.cantidad)})`, valor: d.festivos.valor },
+    d.bonificaciones > 0 && { concepto: 'Bonificaciones', valor: d.bonificaciones },
+    d.comisiones > 0 && { concepto: 'Comisiones', valor: d.comisiones },
+    d.auxilioTransporte > 0 && { concepto: 'Auxilio de transporte', valor: d.auxilioTransporte },
+  ].filter(Boolean);
+  const x = resultado.deducciones || {};
+  const deducciones = [
+    x.salud > 0 && { concepto: 'Salud (4%)', valor: Math.round(x.salud) },
+    x.pension > 0 && { concepto: 'Pensión (4%)', valor: Math.round(x.pension) },
+    x.retencionFuente > 0 && { concepto: 'Retención en la fuente', valor: Math.round(x.retencionFuente) },
+    x.voluntarias > 0 && { concepto: 'Deducciones voluntarias', valor: Math.round(x.voluntarias) },
+  ].filter(Boolean);
+  return {
+    devengados,
+    totalDevengados: Math.round(d.total || 0),
+    deducciones,
+    totalDeducciones: Math.round(x.total || 0),
+    neto: Math.round(resultado.netoPagar || 0),
+  };
+}
+
 export const historialNominaService = {
   listar() {
     try {
@@ -660,6 +739,10 @@ export const historialNominaService = {
       aportesEmpleador: resultado?.aportesEmpleador?.total || 0,
       prestaciones: resultado?.prestaciones?.total || 0,
       costoTotal: resultado?.costoTotalEmpresa || 0,
+      // Datos para el desprendible de pago (panel web y reimpresiones)
+      cedula: emp?.cedula || null,
+      cargo: emp?.cargo || null,
+      detalle: detalleDesprendible(resultado),
       ...extra,
       registradoEn: new Date().toISOString()
     };

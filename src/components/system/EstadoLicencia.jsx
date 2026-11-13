@@ -73,6 +73,11 @@ export default function EstadoLicencia({ esAdmin }) {
           </button>
         </div>
       )}
+      {abierto && info.machineId && (
+        <div style={{ marginTop: 6, fontSize: 12 }}>
+          Código de este equipo (envíelo a su proveedor para recibir la licencia): <code style={{ userSelect: "all" }}>{info.machineId}</code>
+        </div>
+      )}
       {mensaje && <div style={{ marginTop: 6 }}>{mensaje}</div>}
     </div>
   );

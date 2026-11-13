@@ -4,12 +4,11 @@
     box-sizing:border-box;
 }
 
-body{
+/* El bloqueo del scroll va solo en la pantalla de login: si se pone en body,
+   queda activo después de iniciar sesión y no deja bajar en los paneles. */
+.login-page{
     font-family:Inter,sans-serif;
     overflow:hidden;
-}
-
-.login-page{
     display:flex;
     height:100vh;
     width:100%;
@@ -28,7 +27,7 @@ body{
     background:
     radial-gradient(
         circle at top left,
-        rgba(255,120,0,.25),
+        rgba(109,94,246,.45),
         transparent 40%
     ),
     #050816;
@@ -64,7 +63,7 @@ body{
     linear-gradient(
       90deg,
       transparent,
-      #ff6b00,
+      #8c80ff,
       transparent
     );
 
@@ -171,9 +170,9 @@ body{
     align-items:center;
     justify-content:center;
     font-size:30px;
-    background:linear-gradient(135deg,#ff6b00,#ff8c00);
+    background:linear-gradient(135deg,#c4f135,#7ee8c2);color:#0c1328;
     border-radius:18px;
-    box-shadow:0 8px 24px rgba(255,107,0,.35);
+    box-shadow:0 10px 26px -8px rgba(196,241,53,.7);
     margin-bottom:14px;
 }
 
@@ -240,8 +239,9 @@ body{
     background:
     linear-gradient(
       135deg,
-      #ff6b00,
-      #ff8c00
+      #6d5ef6,
+      #4f7bff 55%,
+      #22c3ee
     );
 
     color:white;
@@ -252,3 +252,9 @@ body{
 .login-button:hover{
     transform:translateY(-2px);
 }
+/* Ajustes del rediseño */
+.login-input, .login-panel input { font-size: 15px; }
+.login-button { height: 52px; border-radius: 14px; font-size: 16px; letter-spacing: .02em; box-shadow: 0 14px 30px -14px rgba(91,75,232,.9); }
+.hero-content h1 { color: #fff; }
+.hero-content h1 br + * , .hero-content h1 { background: linear-gradient(90deg, #ffffff 0%, #ffffff 55%, #c4f135 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.login-brand h1, .login-brand h2 { color: #fff; }

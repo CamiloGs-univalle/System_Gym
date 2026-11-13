@@ -464,7 +464,7 @@ export default function CierrePanel() {
         <div className="cierre-live-badge">
           <span className="cierre-live-dot" />
           En vivo
-          <span style={{ marginLeft: '8px', fontSize: '12px', color: '#6b7280' }}>
+          <span style={{ marginLeft: '8px', fontSize: '13.5px', color: '#6b7280' }}>
             {ventas.length} ventas
           </span>
         </div>
@@ -528,7 +528,13 @@ export default function CierrePanel() {
                     )}
                   </div>
                   <span className="cierre-tx-metodo">
-                    {v.metodoPago === "efectivo" ? "💵" : v.metodoPago === "transferencia" ? "📲" : "💳"}
+                    {(() => {
+                      // Acepta "CASH"/"efectivo", "TRANSFER"/"transferencia", "CARD"/"tarjeta"
+                      const m = String(v.metodoPago || "").toLowerCase();
+                      if (m === "efectivo" || m === "cash") return <span title="Efectivo">💵</span>;
+                      if (m === "transferencia" || m === "transfer") return <span title="Transferencia">📲</span>;
+                      return <span title="Tarjeta">💳</span>;
+                    })()}
                   </span>
                   <span className="cierre-tx-monto">{COP(v.total)}</span>
                 </div>
@@ -620,7 +626,7 @@ export default function CierrePanel() {
         <div className="cierre-cuadre-body">
           {/* Arqueo ciego: no se muestra cuánto debería haber. Se cuenta la caja
               y el sistema calcula la diferencia al cerrar. */}
-          <p className="cierre-esperado" style={{ fontSize: 13, color: '#4b5563' }}>
+          <p className="cierre-esperado" style={{ fontSize: 15, color: '#4b5563', lineHeight: 1.55 }}>
             Cuenta el efectivo de la caja y escríbelo abajo. El sistema calculará si hay
             diferencia y te mostrará el resultado al cerrar.
           </p>

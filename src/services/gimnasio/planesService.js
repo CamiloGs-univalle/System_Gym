@@ -86,6 +86,12 @@ export const planesService = {
     return planes[idx];
   },
 
+  /** Reemplaza la lista completa de planes (Configuración → Planes y precios) */
+  guardarTodos(planes) {
+    guardar(planes);
+    return planes;
+  },
+
   obtenerPrecioDiario(plan) {
     if (!plan) return 0;
     if (plan.unidadDuracion === "DIAS") return plan.precio / plan.duracion;

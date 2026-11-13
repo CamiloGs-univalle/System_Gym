@@ -5,13 +5,14 @@
 
 import { useState, useEffect } from "react";
 import Button from "../../../components/ui/Button";
-import { turnoService, obtenerHorariosConfigurados } from "../../../services/turnoService";
+import { turnoService, obtenerHorariosConfigurados, validarHorarioTurno, terminaDiaSiguiente } from "../../../services/turnoService";
 import { TIPOS_TURNO } from "./TurnosPanel";
 import { formatCurrencyInput, cleanCurrencyInput } from "../../../utils/formatters";
 
-const horariosConfig = obtenerHorariosConfigurados();
 
 export default function EditarTurno({ turnoId, turno: turnoProp, empleados, onClose, onSuccess }) {
+    // Se lee en cada render: si el admin cambia los horarios en Configuración, se aplican de inmediato
+    const horariosConfig = obtenerHorariosConfigurados();
     const [form, setForm] = useState({
         empleadoId: "",
         tipo: "FULL_SHIFT",
@@ -91,8 +92,8 @@ export default function EditarTurno({ turnoId, turno: turnoProp, empleados, onCl
             return;
         }
 
-        if (form.horaFin <= form.horaInicio) {
-            setError("La hora de fin debe ser posterior a la hora de inicio");
+        if (validarHorarioTurno(form.horaInicio, form.horaFin)) {
+            setError(validarHorarioTurno(form.horaInicio, form.horaFin));
             return;
         }
 

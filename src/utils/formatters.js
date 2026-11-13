@@ -2,6 +2,28 @@
 // UTILS - FORMATEADORES
 // ============================================
 
+/**
+ * Fecha AAAA-MM-DD en la hora local del equipo (Colombia).
+ * No usar date.toISOString().split("T")[0]: eso da la fecha en UTC y,
+ * después de las 7:00 p. m., devuelve el día siguiente.
+ */
+export const fechaLocalISO = (d = new Date()) => {
+    const f = d instanceof Date ? d : new Date(d);
+    const y = f.getFullYear();
+    const m = String(f.getMonth() + 1).padStart(2, "0");
+    const dia = String(f.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dia}`;
+};
+
+/** Fecha y hora local "AAAA-MM-DDTHH:mm:ss" (sin "Z"): para registros que se filtran por día. */
+export const fechaHoraLocalISO = (d = new Date()) => {
+    const f = d instanceof Date ? d : new Date(d);
+    const hh = String(f.getHours()).padStart(2, "0");
+    const mm = String(f.getMinutes()).padStart(2, "0");
+    const ss = String(f.getSeconds()).padStart(2, "0");
+    return `${fechaLocalISO(f)}T${hh}:${mm}:${ss}`;
+};
+
 export const COP = (v) => {
     if (v === undefined || v === null || isNaN(v)) return "$0";
     return "$" + Math.round(v).toLocaleString("es-CO");

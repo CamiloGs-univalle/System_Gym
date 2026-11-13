@@ -8,16 +8,15 @@
 import { useState, useMemo, useEffect } from "react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-import { COP, formatDate, formatCurrencyInput } from "../../utils/formatters";
+import { COP, formatDate, formatCurrencyInput, fechaLocalISO } from "../../utils/formatters";
 import { clientesService } from "../../services/clientesService";
 import { empleadosService } from "../../services/empleadosService";
 import ingresoService from "../../services/ingresoService";
 import finanzasService from "../../services/finanzasService";
 import { historialNominaService } from "../../services/nomina/nominaEngine";
 import useAuthStore from "../../store/authStore";
+import VentasAnulables from "../../components/admin/VentasAnulables";
 
-const hoy = new Date().toISOString().split("T")[0];
-const mesActual = hoy.slice(0, 7);
 
 const diasHastaFecha = (fechaStr) => {
     if (!fechaStr) return 0;
@@ -34,6 +33,8 @@ const extraer = (r, fallback = {}) => {
 };
 
 export default function FinanzasPanel() {
+    // Se calcula en cada render: si la app queda abierta pasada la medianoche, cambia de día/mes
+    const mesActual = fechaLocalISO().slice(0, 7);
     const [seccion, setSeccion] = useState("resumen");
     const [clientes, setClientes] = useState([]);
     const [empleados, setEmpleados] = useState([]);
@@ -46,7 +47,7 @@ export default function FinanzasPanel() {
         concepto: "",
         monto: "",
         categoria: "Servicios",
-        fecha: hoy,
+        fecha: fechaLocalISO(),
     });
 
     const usuario = useAuthStore((state) => state.usuario);
@@ -201,7 +202,7 @@ export default function FinanzasPanel() {
                 intakeId: null,
             });
             setModalEgreso(false);
-            setFormEgreso({ concepto: "", monto: "", categoria: "Servicios", fecha: hoy });
+            setFormEgreso({ concepto: "", monto: "", categoria: "Servicios", fecha: fechaLocalISO() });
             await cargarMovimientos();
             alert("✅ Egreso registrado correctamente");
         } catch (e) {
@@ -232,6 +233,7 @@ export default function FinanzasPanel() {
                     { id: "resumen", label: "📊 Resumen" },
                     { id: "nomina", label: "👷 Nómina" },
                     { id: "movimientos", label: "📋 Movimientos" },
+                    { id: "ventas", label: "🧾 Ventas y anulaciones" },
                 ].map(s => (
                     <button
                         key={s.id}
@@ -242,6 +244,8 @@ export default function FinanzasPanel() {
                     </button>
                 ))}
             </div>
+
+            {seccion === "ventas" && <VentasAnulables />}
 
             {/* RESUMEN */}
             {seccion === "resumen" && (

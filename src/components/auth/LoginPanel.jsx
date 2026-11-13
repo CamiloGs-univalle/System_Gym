@@ -141,7 +141,11 @@ export default function LoginPanel() {
       <div className="login-card">
 
         <div className="login-brand">
-          <span className="login-logo">💪</span>
+          <span className="login-logo">
+            <svg viewBox="0 0 32 32" width="30" height="30" fill="none" aria-hidden="true">
+              <path d="M7 12v8M11 9v14M21 9v14M25 12v8M11 16h10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+          </span>
           <h2>System Gym</h2>
           <p>Bienvenido, ingresa tus credenciales para continuar</p>
         </div>
@@ -220,7 +224,7 @@ export default function LoginPanel() {
         >
           {loading
             ? "⏳ Cargando..."
-            : "🚪 INGRESAR"}
+            : "Ingresar"}
         </button>
 
       </div>

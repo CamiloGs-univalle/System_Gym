@@ -25,10 +25,9 @@ import {
     formatPhone,
     getInitials,
     getAvatarColor,
-    formatCurrencyInput
-} from "../../utils/formatters";
+    formatCurrencyInput, fechaLocalISO } from "../../utils/formatters";
 // Servicio de empleados
-import empleadosService from "../../services/empleadosService";
+import empleadosService, { validarPassword } from "../../services/empleadosService";
 
 // ============================================
 // COMPONENTE PRINCIPAL
@@ -65,7 +64,7 @@ export default function EmpleadosPanel() {
         cargo: "Entrenador",
         salario: "",
         frecuenciaPago: "QUINCENAL",
-        fechaIngreso: new Date().toISOString().split("T")[0],
+        fechaIngreso: fechaLocalISO(),
         tipoVinculacion: "LABORAL",
         riesgoARL: 1,
         ultimoPago: "",
@@ -201,6 +200,13 @@ export default function EmpleadosPanel() {
     const abrirModal = (item = null) => {
         setEditando(item);
 
+        // El usuario con el que entra al sistema se lee de su cuenta real
+        if (item?.userId) {
+            empleadosService.obtenerUsername(item.userId).then((username) => {
+                if (username) setForm((f) => ({ ...f, username }));
+            });
+        }
+
         if (item) {
             setForm({
                 nombre: item.nombre,
@@ -220,7 +226,7 @@ export default function EmpleadosPanel() {
                 confirmPassword: "",
             });
         } else {
-            const hoy = new Date().toISOString().split("T")[0];
+            const hoy = fechaLocalISO();
             const proximo = new Date();
             proximo.setDate(proximo.getDate() + 15);
 
@@ -235,7 +241,7 @@ export default function EmpleadosPanel() {
                 tipoVinculacion: "LABORAL",
                 riesgoARL: 1,
                 ultimoPago: "",
-                proximoPago: proximo.toISOString().split("T")[0],
+                proximoPago: fechaLocalISO(proximo),
                 activo: true,
                 username: "",
                 password: "",
@@ -257,10 +263,11 @@ export default function EmpleadosPanel() {
                 };
             }
 
-            if (form.password.length < 6) {
+            const errorPassword = validarPassword(form.password);
+            if (errorPassword) {
                 return {
                     isValid: false,
-                    error: "La contraseña debe tener al menos 6 caracteres"
+                    error: errorPassword
                 };
             }
 
@@ -311,12 +318,17 @@ export default function EmpleadosPanel() {
                 return;
             }
 
-            // Al editar la contraseña es opcional (vacía = conservar la actual)
-            const esContrasenaNueva = form.password.trim().length > 0;
+            // Al editar, la contraseña es opcional (vacía = conservar la actual),
+            // salvo que el empleado aún no tenga usuario: entonces hay que crearlo.
+            const tieneUsuario = Boolean(editando?.userId);
+            const esContrasenaNueva = form.password.length > 0;
 
-            if (esContrasenaNueva) {
-                if (form.password.length < 6) {
-                    alert("❌ La contraseña debe tener al menos 6 caracteres");
+            if (esContrasenaNueva || !tieneUsuario) {
+                const errorPassword = validarPassword(form.password);
+                if (errorPassword) {
+                    alert(`❌ ${!tieneUsuario && editando
+                        ? "Este empleado aún no tiene usuario para entrar al sistema. Asígnele una contraseña. "
+                        : ""}${errorPassword}`);
                     return;
                 }
 
@@ -324,10 +336,6 @@ export default function EmpleadosPanel() {
                     alert("❌ Las contraseñas no coinciden");
                     return;
                 }
-            } else if (!editando) {
-                // Al crear, la contraseña es obligatoria
-                alert("❌ La contraseña debe tener al menos 6 caracteres");
-                return;
             }
         }
 
@@ -342,7 +350,7 @@ export default function EmpleadosPanel() {
             cargo: form.cargo,
             salario: salarioNum,
             frecuenciaPago: form.frecuenciaPago,
-            fechaIngreso: form.fechaIngreso || new Date().toISOString().split('T')[0],
+            fechaIngreso: form.fechaIngreso || fechaLocalISO(),
             tipoVinculacion: form.tipoVinculacion || 'LABORAL',
             riesgoARL: Number(form.riesgoARL) || 1,
             ultimoPago: form.ultimoPago || '',
@@ -362,21 +370,26 @@ export default function EmpleadosPanel() {
 
             if (editando) {
                 console.log(`🔄 Actualizando empleado ${editando.id}...`);
+                // Recepcionista: primero el usuario con el que entra al sistema
+                // (se crea si no existe; se actualizan usuario, estado y contraseña)
+                if (form.cargo === "Recepcionista") {
+                    data.userId = await empleadosService.guardarUsuario({
+                        userId: editando.userId,
+                        nombre: data.nombre,
+                        username: data.username,
+                        password: form.password,
+                        activo: data.activo,
+                    });
+                    // Si algo falla después, un nuevo intento actualiza este usuario en vez de duplicarlo
+                    if (!editando.userId) setEditando({ ...editando, userId: data.userId });
+                }
                 empleadoGuardado = await empleadosService.actualizar(editando.id, data);
+                if (form.cargo === "Recepcionista") {
+                    empleadoGuardado.username = data.username.trim();
+                }
                 setEmpleados(empleados.map(e =>
                     e.id === editando.id ? empleadoGuardado : e
                 ));
-
-                // Si el recepcionista cambió la contraseña, actualizarla en el usuario
-                if (form.cargo === "Recepcionista" && form.password.trim().length > 0) {
-                    const userId = editando.userId || empleadoGuardado.userId;
-                    if (userId) {
-                        await empleadosService.cambiarPassword(userId, form.password);
-                        console.log(`🔑 Contraseña del usuario ${userId} actualizada`);
-                    } else {
-                        console.warn("⚠️ No se pudo cambiar la contraseña: el empleado no tiene userId");
-                    }
-                }
             } else {
                 console.log("📝 Creando nuevo empleado...");
                 empleadoGuardado = await empleadosService.crear(data);
@@ -777,11 +790,13 @@ export default function EmpleadosPanel() {
                                             type="password"
                                             value={form.password}
                                             onChange={e => setForm({ ...form, password: e.target.value })}
-                                            placeholder="Mínimo 6 caracteres"
+                                            placeholder={editando?.userId ? "Vacío = no cambiar" : "Mínimo 8, con letras y números"}
                                             disabled={cargando}
                                         />
                                         <small style={{ color: '#666', fontSize: '11px', marginTop: '4px', display: 'block' }}>
-                                            La contraseña debe tener al menos 6 caracteres
+                                            {editando?.userId
+                                                ? "Déjela vacía para conservar la actual. Si la cambia, se pedirá cambiarla al entrar."
+                                                : "Mínimo 8 caracteres, con letras y números. Se pedirá cambiarla al entrar."}
                                         </small>
                                     </div>
 

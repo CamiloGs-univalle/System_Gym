@@ -1,496 +1,617 @@
+// ============================================================
+// Caja (punto de venta)
+// ------------------------------------------------------------
+// - Productos a la izquierda; cliente, planes y cuenta a la derecha.
+// - El estado del plan del cliente viene del sistema (backend), no de
+//   registros locales, para que coincida con lo que valida el ingreso.
+// - Cada cobro queda en el turno abierto. Si una parte del cobro falla,
+//   lo que ya se cobró sale de la cuenta para no cobrarlo dos veces.
+// ============================================================
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import {
+  Search, X, ScanBarcode, Package, ShoppingCart, Banknote, CreditCard, Landmark,
+  Minus, Plus, Trash2, UserRound, CalendarCheck, CalendarX, CalendarClock, Phone,
+  IdCard, Lock, CheckCircle2, AlertTriangle, Flame,
+} from 'lucide-react';
 import { productosService } from '../../services/productosService';
 import ventasService from '../../services/ventasService';
 import { useVentasStore } from '../../store/ventasStore';
-import { clientesService } from '../../services/clientesService';
+import { clientesService, tipoMembresiaDePlan } from '../../services/clientesService';
+import { fechaLocalISO } from '../../utils/formatters';
+import { diasAvisoVencimiento, stockMinimoGlobal } from '../../utils/configuracion';
 import { planesService } from '../../services/gimnasio/planesService';
-import { membresiasService } from '../../services/gimnasio/membresiasService';
-import { pagosService } from '../../services/gimnasio/pagosService';
-import { carteraService } from '../../services/gimnasio/carteraService';
-import { streakService } from '../../services/gimnasio/streakService';
-import '../../styles/recepcionCSS/pos.css';
+import accesoService from '../../services/accesoService';
+import FotoCliente from '../../components/clientes/FotoCliente';
+import './pos-caja.css';
 
-const COP = (v) => {
-  if (v == null || isNaN(v)) return '$0';
-  return '$' + Number(Math.round(v)).toLocaleString('es-CO');
+// Llave única por cobro (Idempotency-Key)
+const nuevaLlaveCobro = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '');
+
+const COP = (v) => '$' + Math.round(Number(v) || 0).toLocaleString('es-CO');
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const fechaCorta = (iso) => {
+  if (!iso) return '—';
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  return `${d} ${MESES[m - 1]} ${y}`;
+};
+const sumarDias = (iso, dias) => {
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  return fechaLocalISO(new Date(y, m - 1, d + dias));
 };
 
-function FlameStreak({ clienteId }) {
-  const [anim, setAnim] = useState(false);
+const METODOS = [
+  { id: 'CASH', label: 'Efectivo', icon: Banknote },
+  { id: 'TRANSFER', label: 'Transferencia', icon: Landmark },
+  { id: 'CARD', label: 'Tarjeta', icon: CreditCard },
+];
+/** Montos con los que probablemente paga: redondeos hacia arriba del total */
+function montosSugeridos(total) {
+  if (!total) return [10000, 20000, 50000];
+  const pasos = [5000, 10000, 20000, 50000, 100000];
+  const montos = [...new Set(pasos.map((p) => Math.ceil(total / p) * p))].filter((m) => m > total);
+  return montos.slice(0, 3);
+}
+const TIPO_PLAN = { DAILY: 'Día', MONTHLY: 'Mensual', QUARTERLY: 'Trimestral', SEMIANNUAL: 'Semestral', ANNUAL: 'Anual' };
 
-  const dias = useMemo(() => {
-    if (!clienteId) return 0;
-    const s = streakService.obtenerStreak(clienteId);
-    return s.diasConsecutivos || 0;
-  }, [clienteId]);
+/** Estado del plan del cliente según el sistema */
+function estadoPlan(cliente) {
+  const m = cliente?.membresia;
+  if (!m || !m.fechaVencimiento) return { clase: 'sin', titulo: 'Sin plan', detalle: 'Nunca ha tenido un plan registrado', icon: CalendarX };
+  const dias = m.diasRestantes || 0;
+  if (dias <= 0) return { clase: 'vencido', titulo: 'Plan vencido', detalle: `Venció el ${fechaCorta(m.fechaVencimiento)}`, icon: CalendarX };
+  if (dias === 1) return { clase: 'alerta', titulo: 'Último día', detalle: `Vence hoy, ${fechaCorta(m.fechaVencimiento)}`, icon: CalendarClock };
+  if (dias <= diasAvisoVencimiento()) return { clase: 'alerta', titulo: `Le quedan ${dias} días`, detalle: `Vence el ${fechaCorta(m.fechaVencimiento)}`, icon: CalendarClock };
+  return { clase: 'activo', titulo: `Activo · ${dias} días`, detalle: `Vence el ${fechaCorta(m.fechaVencimiento)}`, icon: CalendarCheck };
+}
 
+function Racha({ clienteId }) {
+  const [dias, setDias] = useState(0);
   useEffect(() => {
-    if (dias > 0) { setAnim(true); const t = setTimeout(() => setAnim(false), 800); return () => clearTimeout(t); }
-  }, [dias]);
-
-  if (dias === 0) {
-    return (
-      <div className="streak-container" style={{ background: '#f3f4f6', border: '1px dashed #d1d5db', borderRadius: 10, padding: '6px 10px', margin: '6px 0' }}>
-        <span style={{ fontSize: '1.1rem' }}>🪨</span>
-        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Sin racha</span>
-      </div>
-    );
-  }
-
-  let nombre, color, bg, emoji;
-  if (dias >= 60) { nombre = 'Legendario'; color = '#7c3aed'; bg = 'linear-gradient(135deg, #ede9fe, #c4b5fd)'; emoji = '🌋'; }
-  else if (dias >= 30) { nombre = 'Inferno'; color = '#dc2626'; bg = 'linear-gradient(135deg, #fee2e2, #fca5a5)'; emoji = '🔥'; }
-  else if (dias >= 14) { nombre = 'Fuego'; color = '#ea580c'; bg = 'linear-gradient(135deg, #fff7ed, #fdba74)'; emoji = '🔥'; }
-  else if (dias >= 7) { nombre = 'Llamita'; color = '#d97706'; bg = 'linear-gradient(135deg, #fffbeb, #fcd34d)'; emoji = '🔥'; }
-  else { nombre = 'Chispa'; color = '#eab308'; bg = 'linear-gradient(135deg, #fefce8, #fde047)'; emoji = '✨'; }
-
-  const pct = Math.min((dias / 30) * 100, 100);
-
+    let vivo = true;
+    setDias(0);
+    if (clienteId) accesoService.estadisticas(clienteId).then((s) => { if (vivo) setDias(s?.currentStreak || 0); });
+    return () => { vivo = false; };
+  }, [clienteId]);
+  if (!dias) return null;
   return (
-    <div className={`streak-container ${anim ? 'streak-animating' : ''}`}
-      style={{ background: bg, border: `1px solid ${color}`, borderRadius: 10, padding: '6px 10px', margin: '6px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: '1.2rem' }}>{emoji}</span>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>{dias}</span>
-          <span style={{ fontSize: '0.7rem', fontWeight: 700, color, textTransform: 'uppercase' }}>{nombre}</span>
-        </div>
-        <div style={{ fontSize: '0.65rem', color: '#6b7280' }}>dias consecutivos</div>
-        <div style={{ height: 3, background: 'rgba(0,0,0,0.08)', borderRadius: 2, marginTop: 3 }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2, transition: 'width 0.5s' }} />
-        </div>
-      </div>
-    </div>
+    <span className="cj-racha" title="Días seguidos que ha venido al gimnasio">
+      <Flame /> {dias} {dias === 1 ? 'día' : 'días'} seguidos
+    </span>
   );
 }
 
-export default function POSPanel({ turnoActivo, turnoValido, turnoIdBackend, verificandoTurno }) {
-  const agregarVenta = useVentasStore(state => state.agregarVenta);
-  const [clientesCache, setClientesCache] = useState([]);
+export default function POSPanel({ turnoActivo, turnoValido, turnoIdBackend, verificandoTurno, onAbrirTurno }) {
+  const agregarVenta = useVentasStore((state) => state.agregarVenta);
+
   const [productos, setProductos] = useState([]);
-  const [planes, setPlanes] = useState([]);
   const [categorias, setCategorias] = useState([]);
-  const [catSeleccionada, setCatSeleccionada] = useState('Todos');
+  const [planes, setPlanes] = useState([]);
+  const [catSeleccionada, setCatSeleccionada] = useState('TODOS');
   const [busqueda, setBusqueda] = useState('');
 
+  const [clientes, setClientes] = useState([]);
+  const clientesCargadosEn = useRef(0);
   const [cliente, setCliente] = useState(null);
   const [busquedaCliente, setBusquedaCliente] = useState('');
   const [mostrarResultados, setMostrarResultados] = useState(false);
-  const [membresia, setMembresia] = useState(null);
+  const [resaltado, setResaltado] = useState(0);
 
   const [carrito, setCarrito] = useState([]);
-  const [metodoPago, setMetodoPago] = useState('efectivo');
+  const [metodoPago, setMetodoPago] = useState('CASH');
   const [montoRecibido, setMontoRecibido] = useState('');
   const [procesando, setProcesando] = useState(false);
-  const [notif, setNotif] = useState(null);
+  const llaveCobro = useRef(null);
+  // Si cambia la cuenta o el método de pago es otro cobro: llave nueva
+  useEffect(() => { llaveCobro.current = null; }, [carrito, metodoPago]);
+  const [aviso, setAviso] = useState(null);
+  const [ultimaVenta, setUltimaVenta] = useState(null);
+
+  const inputProductoRef = useRef(null);
   const inputClienteRef = useRef(null);
+  const avisoTimer = useRef(null);
 
-  const mostrarNotif = (tipo, texto) => {
-    setNotif({ tipo, texto });
-    setTimeout(() => setNotif(null), 3000);
-  };
-
-  const recargarProductos = useCallback(async () => {
-    try {
-      const prodsResp = await productosService.listarProductos();
-      const prodsData = Array.isArray(prodsResp) ? prodsResp : prodsResp?.data || [];
-      setProductos(prodsData.map(p => ({
-        id: p.id, nombre: p.name || p.nombre || '', codigo: p.code || p.codigo || '',
-        precio: p.salePrice || p.precio || 0, stock: p.stock || 0,
-        categoriaId: p.categoryId || p.category?.id,
-        categoria: p.category?.name || p.categoria || 'General', imagen: p.imagen || ''
-      })));
-    } catch {}
+  const mostrarAviso = useCallback((tipo, texto) => {
+    clearTimeout(avisoTimer.current);
+    setAviso({ tipo, texto });
+    avisoTimer.current = setTimeout(() => setAviso(null), tipo === 'error' ? 5000 : 3500);
   }, []);
 
-  useEffect(() => {
-    const cargar = async () => {
-      try {
-        const catsResp = await productosService.listarCategorias();
-        const catsData = Array.isArray(catsResp) ? catsResp : catsResp?.data || [];
-        setCategorias(catsData.map(c => ({ id: c.id, nombre: c.name || c.nombre || 'General' })));
-      } catch {}
-      try {
-        const prodsResp = await productosService.listarProductos();
-        const prodsData = Array.isArray(prodsResp) ? prodsResp : prodsResp?.data || [];
-        setProductos(prodsData.map(p => ({
+  // ---------------- Carga de datos ----------------
+  const cargarProductos = useCallback(async () => {
+    try {
+      const resp = await productosService.listarProductos();
+      const data = Array.isArray(resp) ? resp : resp?.data || [];
+      setProductos(data
+        .filter((p) => p.active !== false)
+        .map((p) => ({
           id: p.id, nombre: p.name || p.nombre || '', codigo: p.code || p.codigo || '',
           precio: p.salePrice || p.precio || 0, stock: p.stock || 0,
           categoriaId: p.categoryId || p.category?.id,
-          categoria: p.category?.name || p.categoria || 'General', imagen: p.imagen || ''
         })));
-      } catch {}
-      setPlanes(planesService.listar());
-      try {
-        const clientesResp = await clientesService.listar();
-        setClientesCache(Array.isArray(clientesResp) ? clientesResp : []);
-      } catch { setClientesCache([]); }
-    };
-    cargar();
+    } catch { /* se muestra vacío */ }
   }, []);
 
-  const clientesFiltrados = useMemo(() => {
-    if (!busquedaCliente.trim()) return [];
-    const q = busquedaCliente.toLowerCase();
-    return clientesCache.filter(c => {
-      const nombre = (c.nombre || '').toLowerCase();
-      const cedula = (c.cedula || '').toLowerCase();
-      const telefono = (c.telefono || '').toLowerCase();
-      const email = (c.email || '').toLowerCase();
-      return nombre.includes(q) || cedula.includes(q) || telefono.includes(q) || email.includes(q);
-    }).slice(0, 8);
-  }, [clientesCache, busquedaCliente]);
+  const cargarClientes = useCallback(async (forzar = false) => {
+    if (!forzar && Date.now() - clientesCargadosEn.current < 30000) return;
+    clientesCargadosEn.current = Date.now();
+    try {
+      const resp = await clientesService.listar();
+      setClientes((Array.isArray(resp) ? resp : []).filter((c) => c.activo !== false));
+    } catch { /* se conserva la lista anterior */ }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await productosService.listarCategorias();
+        const data = Array.isArray(resp) ? resp : resp?.data || [];
+        setCategorias(data.map((c) => ({ id: c.id, nombre: c.name || c.nombre || 'General' })));
+      } catch { /* sin categorías */ }
+    })();
+    cargarProductos();
+    cargarClientes(true);
+    setPlanes(planesService.filtrar({ tipo: 'MEMBRESIA', estado: 'ACTIVO' }));
+    inputProductoRef.current?.focus();
+  }, [cargarProductos, cargarClientes]);
+
+  // ---------------- Productos ----------------
+  const categoriasConProductos = useMemo(() => categorias
+    .map((c) => ({ ...c, total: productos.filter((p) => p.categoriaId === c.id).length }))
+    .filter((c) => c.total > 0), [categorias, productos]);
 
   const productosFiltrados = useMemo(() => {
-    let f = productos;
-    if (catSeleccionada !== 'Todos') f = f.filter(p => p.categoriaId === catSeleccionada);
-    if (busqueda.trim()) {
-      const q = busqueda.toLowerCase();
-      f = f.filter(p => p.nombre.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q));
-    }
-    return f;
+    let lista = productos;
+    if (catSeleccionada !== 'TODOS') lista = lista.filter((p) => p.categoriaId === catSeleccionada);
+    const q = busqueda.trim().toLowerCase();
+    if (q) lista = lista.filter((p) => p.nombre.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q));
+    // Primero los que hay en existencia
+    return [...lista].sort((a, b) => (b.stock > 0) - (a.stock > 0) || a.nombre.localeCompare(b.nombre));
   }, [productos, catSeleccionada, busqueda]);
 
-  const seleccionarCliente = useCallback((c) => {
-    setCliente(c);
-    setBusquedaCliente(c.nombre || '');
-    setMostrarResultados(false);
-    try {
-      const mem = membresiasService.obtenerActivaPorCliente(c.id);
-      setMembresia(mem);
-      streakService.registrarAsistencia(c.id);
-    } catch { setMembresia(null); }
-  }, []);
+  const enCarrito = useMemo(() => Object.fromEntries(
+    carrito.filter((i) => i.tipo === 'producto').map((i) => [i.id, i.cantidad])), [carrito]);
 
-  const quitarCliente = useCallback(() => {
-    setCliente(null); setMembresia(null); setBusquedaCliente('');
-  }, []);
-
-  const agregarAlCarrito = useCallback((item, tipo) => {
-    setCarrito(prev => {
-      const idx = prev.findIndex(i => i.id === item.id && i.tipo === tipo);
+  const agregarProducto = useCallback((p) => {
+    if (p.stock <= 0) { mostrarAviso('error', `${p.nombre} está agotado`); return; }
+    const actual = enCarrito[p.id] || 0;
+    if (actual >= p.stock) { mostrarAviso('error', `Solo hay ${p.stock} de ${p.nombre}`); return; }
+    setCarrito((prev) => {
+      const idx = prev.findIndex((i) => i.tipo === 'producto' && i.id === p.id);
       if (idx >= 0) {
         const copia = [...prev];
         copia[idx] = { ...copia[idx], cantidad: copia[idx].cantidad + 1 };
         return copia;
       }
-      return [...prev, {
-        id: item.id, tipo, nombre: item.nombre,
-        precio: item.precio || 0,
-        cantidad: 1, clienteId: cliente?.id, clienteNombre: cliente?.nombre, plan: tipo === 'plan' ? item : null
+      return [...prev, { tipo: 'producto', id: p.id, nombre: p.nombre, precio: p.precio, cantidad: 1, stock: p.stock }];
+    });
+  }, [enCarrito, mostrarAviso]);
+
+  // Enter en el buscador: código exacto (lector de barras) o único resultado
+  const onEnterProducto = (e) => {
+    if (e.key === 'Escape') { setBusqueda(''); return; }
+    if (e.key !== 'Enter') return;
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return;
+    const exacto = productos.find((p) => p.codigo.toLowerCase() === q);
+    const elegido = exacto || (productosFiltrados.length === 1 ? productosFiltrados[0] : null);
+    if (elegido) {
+      agregarProducto(elegido);
+      setBusqueda('');
+    }
+  };
+
+  // ---------------- Clientes ----------------
+  const clientesFiltrados = useMemo(() => {
+    const q = busquedaCliente.trim().toLowerCase();
+    if (!q || cliente) return [];
+    const digitos = q.replace(/\D/g, '');
+    return clientes.filter((c) => (c.nombre || '').toLowerCase().includes(q)
+      || (digitos && ((c.cedula || '').includes(digitos) || (c.telefono || '').includes(digitos))))
+      .slice(0, 8);
+  }, [clientes, busquedaCliente, cliente]);
+
+  const seleccionarCliente = useCallback((c) => {
+    setCliente(c);
+    setBusquedaCliente('');
+    setMostrarResultados(false);
+  }, []);
+
+  const quitarCliente = useCallback(() => {
+    setCliente(null);
+    setBusquedaCliente('');
+    setTimeout(() => inputClienteRef.current?.focus(), 0);
+  }, []);
+
+  const onTeclaCliente = (e) => {
+    if (!clientesFiltrados.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setResaltado((r) => Math.min(r + 1, clientesFiltrados.length - 1)); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setResaltado((r) => Math.max(r - 1, 0)); }
+    if (e.key === 'Enter') { e.preventDefault(); seleccionarCliente(clientesFiltrados[resaltado] || clientesFiltrados[0]); }
+    if (e.key === 'Escape') setMostrarResultados(false);
+  };
+
+  const plan = estadoPlan(cliente);
+  const planVigente = cliente && (cliente.membresia?.diasRestantes || 0) > 0;
+
+  // ---------------- Planes ----------------
+  const agregarPlan = useCallback((p) => {
+    if (!cliente) {
+      mostrarAviso('error', 'Primero busque y seleccione el cliente');
+      inputClienteRef.current?.focus();
+      return;
+    }
+    setCarrito((prev) => {
+      // Un solo plan por cliente en cada cobro: si elige otro, se reemplaza
+      const sinPlanDelCliente = prev.filter((i) => !(i.tipo === 'plan' && i.clienteId === cliente.id));
+      return [...sinPlanDelCliente, {
+        tipo: 'plan', id: p.id, nombre: p.nombre, precio: p.precio, cantidad: 1, plan: p,
+        clienteId: cliente.id, clienteNombre: cliente.nombre,
       }];
     });
-  }, [cliente]);
+  }, [cliente, mostrarAviso]);
 
-  const eliminarDelCarrito = useCallback((idx) => {
-    setCarrito(prev => prev.filter((_, i) => i !== idx));
-  }, []);
+  const planEnCarrito = cliente ? carrito.find((i) => i.tipo === 'plan' && i.clienteId === cliente.id) : null;
 
-  const cambiarCantidad = useCallback((idx, delta) => {
-    setCarrito(prev => {
+  // ---------------- Cuenta ----------------
+  const cambiarCantidad = (idx, delta) => {
+    setCarrito((prev) => {
       const copia = [...prev];
-      copia[idx] = { ...copia[idx], cantidad: Math.max(0, copia[idx].cantidad + delta) };
-      return copia.filter(i => i.cantidad > 0);
+      const item = copia[idx];
+      const max = item.tipo === 'plan' ? 1 : item.stock;
+      const nueva = item.cantidad + delta;
+      if (nueva > max) { mostrarAviso('error', `Solo hay ${max} de ${item.nombre}`); return prev; }
+      copia[idx] = { ...item, cantidad: nueva };
+      return copia.filter((i) => i.cantidad > 0);
     });
-  }, []);
+  };
+  const eliminarItem = (idx) => setCarrito((prev) => prev.filter((_, i) => i !== idx));
+  const vaciar = () => { setCarrito([]); setMontoRecibido(''); };
 
   const total = useMemo(() => carrito.reduce((s, i) => s + i.precio * i.cantidad, 0), [carrito]);
-  const cambio = useMemo(() => {
-    if (metodoPago !== 'efectivo') return null;
-    return (parseFloat(montoRecibido) || 0) - total;
-  }, [metodoPago, montoRecibido, total]);
+  const recibido = Number(montoRecibido) || 0;
+  const cambio = metodoPago === 'CASH' ? recibido - total : null;
+  const items = carrito.reduce((s, i) => s + i.cantidad, 0);
+
+  const motivoBloqueo = (() => {
+    if (verificandoTurno) return 'Verificando el turno…';
+    if (!turnoValido || !(turnoIdBackend || turnoActivo?.id)) return 'Abra un turno de caja para poder cobrar';
+    if (carrito.length === 0) return 'Agregue productos o un plan';
+    if (metodoPago === 'CASH' && recibido > 0 && recibido < total) return `Faltan ${COP(total - recibido)}`;
+    return null;
+  })();
 
   const procesarVenta = useCallback(async () => {
-    if (carrito.length === 0 || procesando) return;
-    if (metodoPago === 'efectivo' && (cambio == null || cambio < 0)) {
-      mostrarNotif('error', 'Monto insuficiente'); return;
-    }
+    if (procesando || motivoBloqueo) return;
     const shiftId = turnoIdBackend || turnoActivo?.id;
-    if (!shiftId) { mostrarNotif('error', 'Abre un turno primero'); return; }
+    const productosVenta = carrito.filter((i) => i.tipo === 'producto');
+    const planesVenta = carrito.filter((i) => i.tipo === 'plan');
+    // Si no escribió cuánto recibió en efectivo, se asume el valor exacto
+    const efectivo = metodoPago === 'CASH' ? (recibido || total) : 0;
 
     setProcesando(true);
+    // La misma llave se reutiliza si se reintenta este carrito: el servidor no cobra dos veces
+    if (!llaveCobro.current) llaveCobro.current = nuevaLlaveCobro();
     try {
-      const mapMetodo = { 'efectivo': 'CASH', 'transferencia': 'TRANSFER', 'tarjeta': 'CARD' };
-      const payMethod = mapMetodo[metodoPago] || 'CASH';
-      const productosVenta = carrito.filter(i => i.tipo === 'producto');
-      const planesVenta = carrito.filter(i => i.tipo === 'plan');
+      const r = await ventasService.cobrar({
+        llave: llaveCobro.current,
+        shiftId,
+        metodoPago,
+        efectivoRecibido: efectivo,
+        productos: productosVenta.map((i) => ({ productId: i.id, quantity: i.cantidad })),
+        planes: planesVenta.map((pl) => ({ clientId: pl.clienteId, membershipType: tipoMembresiaDePlan(pl.plan), amount: pl.precio })),
+      });
 
-      if (productosVenta.length > 0 && turnoValido) {
-        const items = productosVenta.map(i => ({
-          productId: i.id, quantity: i.cantidad, unitPrice: i.precio, subtotal: i.precio * i.cantidad
-        }));
-        const totalProd = productosVenta.reduce((s, i) => s + i.precio * i.cantidad, 0);
-        await ventasService.registrarVenta(items, payMethod, shiftId, 'PRODUCT_SALE', cliente?.id, totalProd);
+      if (productosVenta.length > 0) {
         agregarVenta({
-          descripcion: productosVenta.map(i => i.nombre).join(', '),
-          total: totalProd,
-          metodoPago: payMethod,
-          tipo: 'producto',
-          cliente: cliente?.nombre || null
+          descripcion: productosVenta.map((i) => `${i.cantidad} x ${i.nombre}`).join(', '),
+          total: productosVenta.reduce((s, i) => s + i.precio * i.cantidad, 0),
+          metodoPago, tipo: 'producto', cliente: cliente?.nombre || null,
         });
       }
-
       for (const pl of planesVenta) {
-        let membresiaCreadaId = membresia?.id || null;
-
-        if (membresia) {
-          try {
-            membresiasService.renovar(membresia.id, {
-              planId: pl.id, planNombre: pl.plan?.nombre || pl.nombre,
-              planPrecio: pl.precio, precioAcordado: pl.precio,
-              montoPagado: pl.precio, metodoPago: payMethod, responsable: 'Recepcion'
-            });
-          } catch (e) { console.warn('Error renovando membresia local:', e.message); }
-        } else if (pl.clienteId) {
-          try {
-            const duracionDias = pl.plan?.duracion || 30;
-            const fechaInicio = new Date();
-            const fechaFin = new Date(fechaInicio.getTime() + duracionDias * 86400000);
-            const nuevaMembresia = membresiasService.crear({
-              clienteId: pl.clienteId, planId: pl.id, planNombre: pl.plan?.nombre || pl.nombre,
-              planPrecio: pl.precio, precioAcordado: pl.precio,
-              fechaInicio: fechaInicio.toISOString().split('T')[0],
-              fechaVencimiento: fechaFin.toISOString().split('T')[0],
-              modeloCobro: '30_DIAS', diasGracia: 5, sedeId: 1
-            });
-            membresiaCreadaId = nuevaMembresia.id;
-          } catch (e) { console.warn('Error creando membresia local:', e.message); }
-        }
-
-        if (pl.clienteId) {
-          try {
-            await clientesService.renovarMembresia(pl.clienteId, {
-              tipo: pl.plan?.nombre?.toLowerCase()?.includes('diario') ? 'daily' :
-                    pl.plan?.nombre?.toLowerCase()?.includes('trimestral') ? 'quarterly' :
-                    pl.plan?.nombre?.toLowerCase()?.includes('semestral') ? 'semestral' :
-                    pl.plan?.nombre?.toLowerCase()?.includes('anual') ? 'annual' : 'mensual',
-              monto: pl.precio, metodoPago: payMethod,
-              efectivoRecibido: metodoPago === 'efectivo' ? (parseFloat(montoRecibido) || pl.precio) : pl.precio,
-              shiftId, processedByUserId: ventasService.getUserId()
-            });
-          } catch (e) {
-            // Si el sistema no registró el cobro, no se debe dar por pagada la membresía
-            throw new Error('No se pudo registrar la membresía: ' + (e.mensajeUsuario || e.message));
-          }
-        }
-
-        pagosService.registrarPagoMembresia(membresiaCreadaId, pl.clienteId, pl.clienteNombre, pl.precio, payMethod, { planNombre: pl.plan?.nombre || pl.nombre });
-        agregarVenta({
-          descripcion: `Membresia: ${pl.plan?.nombre || pl.nombre}`,
-          total: pl.precio,
-          metodoPago: payMethod,
-          tipo: 'mensualidad',
-          cliente: pl.clienteNombre || cliente?.nombre || null
-        });
-
-        try {
-          const fechaVenc = new Date();
-          fechaVenc.setDate(fechaVenc.getDate() + (pl.plan?.duracion || 30));
-          carteraService.crearDesdeFactura({
-            clienteId: pl.clienteId,
-            clienteNombre: pl.clienteNombre || cliente?.nombre || '',
-            concepto: 'MEMBRESIA',
-            fechaVencimiento: fechaVenc.toISOString().split('T')[0],
-            valor: pl.precio
-          });
-        } catch (e) { console.warn('Error creando cartera:', e.message); }
+        // El plan, sus fechas y el pago quedan en el servidor (clientes y ventas)
+        agregarVenta({ descripcion: `Plan ${pl.nombre}`, total: pl.precio, metodoPago, tipo: 'mensualidad', cliente: pl.clienteNombre });
       }
 
-      mostrarNotif('exito', `Venta procesada - ${COP(total)}`);
-      setCarrito([]); setMontoRecibido(''); quitarCliente();
-      await recargarProductos();
+      llaveCobro.current = null;
+      const totalCobrado = r?.total ?? total;
+      const cambioServidor = r?.change ?? (metodoPago === 'CASH' ? Math.max(0, efectivo - total) : null);
+      setUltimaVenta({
+        total: totalCobrado, metodoPago, cambio: metodoPago === 'CASH' ? cambioServidor : null,
+        resumen: carrito.map((i) => `${i.cantidad > 1 ? `${i.cantidad} x ` : ''}${i.nombre}`).join(', '),
+        cliente: cliente?.nombre || null,
+      });
+      setCarrito([]);
+      setMontoRecibido('');
+      setCliente(null);
+      setBusquedaCliente('');
+      mostrarAviso('exito', metodoPago === 'CASH' && cambioServidor > 0
+        ? `Venta registrada · Entregue ${COP(cambioServidor)} de cambio`
+        : 'Venta registrada');
+      inputProductoRef.current?.focus();
     } catch (e) {
-      mostrarNotif('error', e.message || 'Error al procesar');
-    } finally { setProcesando(false); }
-  }, [carrito, cliente, metodoPago, montoRecibido, total, cambio, procesando, turnoIdBackend, turnoActivo, turnoValido, membresia, quitarCliente, recargarProductos]);
+      // Nada quedó cobrado (todo es una sola transacción). Si fue un corte de conexión,
+      // al reintentar se usa la misma llave y el servidor no cobra dos veces.
+      const sinRespuesta = !e?.status && !e?.response;
+      mostrarAviso('error', sinRespuesta
+        ? 'No hubo respuesta del servidor. Vuelva a presionar Cobrar: no se cobrará dos veces.'
+        : (e.mensajeUsuario || e.message || 'No se pudo registrar la venta. No se cobró nada.'));
+    } finally {
+      setProcesando(false);
+      cargarProductos();
+      if (planesVenta.length) cargarClientes(true);
+    }
+  }, [procesando, motivoBloqueo, turnoIdBackend, turnoActivo, carrito, metodoPago, recibido, total, cliente,
+    agregarVenta, mostrarAviso, cargarProductos, cargarClientes]);
 
+  // ---------------- Alto disponible ----------------
+  // La caja ocupa exactamente el alto visible: nada de la página necesita scroll.
+  const raizRef = useRef(null);
+  const [alto, setAlto] = useState(null);
+  useEffect(() => {
+    const medir = () => {
+      const el = raizRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + (el.closest('.sg-main')?.scrollTop || 0);
+      setAlto(Math.max(520, window.innerHeight - top - 18));
+    };
+    medir();
+    window.addEventListener('resize', medir);
+    return () => window.removeEventListener('resize', medir);
+  }, []);
+
+  // Iniciales del producto solo con palabras (no "A6" por "Agua 600 ml")
+  const iniciales = (n = '') => {
+    const palabras = n.split(/\s+/).filter((w) => /^[a-záéíóúñ]/i.test(w) && w.length > 2);
+    if (palabras.length === 0) return n.slice(0, 2).toUpperCase();
+    if (palabras.length === 1) return palabras[0].slice(0, 2).toUpperCase();
+    return (palabras[0][0] + palabras[1][0]).toUpperCase();
+  };
+
+  // ---------------- Vista ----------------
   return (
-    <div className="pos-wireframe">
-      {notif && (
-        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, padding: '12px 20px', borderRadius: 8, background: notif.tipo === 'exito' ? '#10b981' : '#ef4444', color: '#fff', fontWeight: 600, fontSize: 14, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-          {notif.tipo === 'exito' ? '✓ ' : '✕ '}{notif.texto}
+    <div className="cj" ref={raizRef} style={alto ? { height: alto } : undefined}>
+      {aviso && (
+        <div className={`cj-aviso ${aviso.tipo}`} role="status">
+          {aviso.tipo === 'exito' ? <CheckCircle2 /> : <AlertTriangle />} {aviso.texto}
         </div>
       )}
 
-      <section className="pos-panel pos-panel-productos">
-        <input className="pos-input-pill pos-buscar-producto" type="text" placeholder="Buscar producto..." value={busqueda} onChange={e => setBusqueda(e.target.value)} />
-        <div className="categorias-container">
-          <button className={`categoria-btn ${catSeleccionada === 'Todos' ? 'active' : ''}`} onClick={() => setCatSeleccionada('Todos')}>
-            Todos <span className="categoria-btn-count">{productos.length}</span>
+      {/* ===================== 1. PRODUCTOS ===================== */}
+      <section className="cj-col cj-productos">
+        <div className="cj-buscar">
+          <Search />
+          <input ref={inputProductoRef} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} onKeyDown={onEnterProducto}
+            placeholder="Buscar producto o escanear código" aria-label="Buscar producto" />
+          {busqueda ? (
+            <button className="cj-icono" onClick={() => setBusqueda('')} aria-label="Limpiar"><X /></button>
+          ) : <span className="cj-kbd"><ScanBarcode /> Enter</span>}
+        </div>
+
+        <div className="cj-chips" role="tablist">
+          <button className={`cj-chip ${catSeleccionada === 'TODOS' ? 'on' : ''}`} onClick={() => setCatSeleccionada('TODOS')}>
+            Todos <span>{productos.length}</span>
           </button>
-          {categorias.map(cat => (
-            <button key={cat.id} className={`categoria-btn ${catSeleccionada === cat.id ? 'active' : ''}`} onClick={() => setCatSeleccionada(cat.id)}>
-              {cat.nombre} <span className="categoria-btn-count">{productos.filter(p => p.categoriaId === cat.id).length}</span>
+          {categoriasConProductos.map((c) => (
+            <button key={c.id} className={`cj-chip ${catSeleccionada === c.id ? 'on' : ''}`} onClick={() => setCatSeleccionada(c.id)}>
+              {c.nombre} <span>{c.total}</span>
             </button>
           ))}
         </div>
-        <div className="productos-grid">
+
+        <div className="cj-grid">
           {productosFiltrados.length === 0 ? (
-            <div className="productos-vacio"><span>📦</span><p>Sin productos</p></div>
-          ) : productosFiltrados.map(p => (
-            <div key={p.id} className={`producto-item ${p.stock <= 0 ? 'producto-sin-stock' : ''}`}
-              onClick={() => p.stock > 0 && agregarAlCarrito(p, 'producto')}
-              style={p.stock <= 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}>
-              <div className="producto-imagen">{p.imagen || '📦'}</div>
-              <div className="producto-detalles">
-                <span className="producto-nombre">{p.nombre}</span>
-                <span className="producto-precio">{COP(p.precio)}</span>
-                <span className="producto-stock" style={{ color: p.stock <= 0 ? '#ef4444' : '#6b7280' }}>
-                  {p.stock <= 0 ? 'Sin stock' : `Stock: ${p.stock}`}
+            <div className="cj-vacio"><Package /><p>{busqueda ? 'Ningún producto coincide con la búsqueda' : 'No hay productos en esta categoría'}</p></div>
+          ) : productosFiltrados.map((p, i) => {
+            const cant = enCarrito[p.id] || 0;
+            const agotado = p.stock <= 0;
+            const quedan = p.stock - cant;
+            return (
+              <button key={p.id} className={`cj-prod tono-${i % 6} ${agotado ? 'agotado' : ''} ${cant ? 'en-cuenta' : ''}`}
+                onClick={() => agregarProducto(p)} disabled={agotado} title={p.codigo ? `Código ${p.codigo}` : p.nombre}>
+                <span className="cj-prod-ini" aria-hidden="true">{iniciales(p.nombre) || '•'}</span>
+                {cant > 0 && <span className="cj-prod-cant">×{cant}</span>}
+                <span className="cj-prod-nombre">{p.nombre}</span>
+                <span className="cj-prod-pie">
+                  <span className="cj-prod-precio">{COP(p.precio)}</span>
+                  <span className={`cj-prod-stock ${agotado ? 'rojo' : quedan <= stockMinimoGlobal() ? 'ambar' : ''}`}>
+                    {agotado ? 'Agotado' : `${quedan} disp.`}
+                  </span>
                 </span>
-              </div>
-            </div>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </section>
 
-      <div className="pos-panel-derecho">
-        <section className="pos-panel pos-panel-cliente">
-          <div className="cliente-fila-superior">
-            <div className="cliente-foto">{cliente ? (cliente.genero === 'masculino' ? '👨' : '👩') : '🧍'}</div>
-            <div style={{ flex: 1, position: 'relative' }}>
-              <input ref={inputClienteRef} className="pos-input-pill cliente-nombre-input" placeholder="Buscar cliente por nombre, cedula o telefono"
-                value={busquedaCliente}
-                onChange={e => { setBusquedaCliente(e.target.value); setMostrarResultados(true); setCliente(null); setMembresia(null); }}
-                onFocus={() => { if (busquedaCliente.trim() && clientesFiltrados.length > 0) setMostrarResultados(true); }}
-                onBlur={() => setTimeout(() => setMostrarResultados(false), 200)} />
-              {cliente && <button className="cliente-quitar-btn" onClick={quitarCliente} title="Quitar">&times;</button>}
-              {mostrarResultados && clientesFiltrados.length > 0 && busquedaCliente.trim() && (
-                <div className="resultados-busqueda-cliente">
-                  {clientesFiltrados.map(c => (
-                    <div key={c.id} className="resultado-item-cliente" onMouseDown={() => seleccionarCliente(c)}>
-                      <div className="resultado-info">
-                        <span className="resultado-nombre">{c.nombre}</span>
-                        <span className="resultado-detalle">Ced: {c.cedula}</span>
-                      </div>
-                      <span className="resultado-telefono">{c.telefono}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {cliente ? (
+      {/* ===================== 2. CLIENTE Y PLANES ===================== */}
+      <section className="cj-col cj-medio">
+        <div className={`cj-cliente ${cliente ? `con-cliente ${plan.clase}` : ''}`}>
+          {!cliente ? (
             <>
-              <div className="cliente-fila-datos">
-                <input className="pos-input-pill" readOnly value={cliente.cedula || ''} placeholder="Cedula" />
-                <input className="pos-input-pill" readOnly value={cliente.telefono || ''} placeholder="Telefono" />
+              <div className="cj-cliente-vacio">
+                <span className="cj-avatar-vacio"><UserRound /></span>
+                <div>
+                  <strong>¿Para quién es?</strong>
+                  <small>Opcional en productos, necesario para planes</small>
+                </div>
               </div>
-
-              <FlameStreak clienteId={cliente.id} />
-
-              <div style={{ margin: '6px 0' }}>
-                {membresia ? (
-                  <div className="membresia-badge membresia-activa" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, borderLeft: '4px solid #10b981', background: '#f0fdf4' }}>
-                    <span style={{ fontSize: '1.3rem' }}>{membresia.estado === 'ACTIVA' ? '✅' : '⚠️'}</span>
-                    <div style={{ flex: 1 }}>
-                      <strong style={{ fontSize: '0.85rem' }}>{membresia.planNombre || 'Sin plan'}</strong>
-                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Vence: {membresia.fechaVencimiento || '—'}</div>
-                      <span style={{ fontSize: '0.7rem', fontWeight: 600, color: membresia.estado === 'ACTIVA' ? '#10b981' : '#ef4444' }}>{membresia.estado}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="membresia-badge membresia-sin" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, borderLeft: '4px solid #d1d5db', background: '#f9fafb' }}>
-                    <span style={{ fontSize: '1.3rem' }}>🚫</span>
-                    <div>
-                      <strong style={{ fontSize: '0.85rem' }}>Sin membresia activa</strong>
-                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Registra un pago para activar</div>
-                    </div>
+              <div className="cj-buscar cj-buscar-cliente">
+                <Search />
+                <input ref={inputClienteRef} value={busquedaCliente}
+                  onChange={(e) => { setBusquedaCliente(e.target.value); setMostrarResultados(true); setResaltado(0); }}
+                  onFocus={() => { cargarClientes(); setMostrarResultados(true); }}
+                  onBlur={() => setTimeout(() => setMostrarResultados(false), 150)}
+                  onKeyDown={onTeclaCliente}
+                  placeholder="Nombre, cédula o teléfono" aria-label="Buscar cliente" />
+                {mostrarResultados && busquedaCliente.trim() && (
+                  <div className="cj-resultados">
+                    {clientesFiltrados.length === 0 ? (
+                      <div className="cj-res-vacio">No se encontró ningún cliente activo</div>
+                    ) : clientesFiltrados.map((c, i) => {
+                      const ep = estadoPlan(c);
+                      return (
+                        <button key={c.id} className={`cj-res ${i === resaltado ? 'on' : ''}`}
+                          onMouseDown={() => seleccionarCliente(c)} onMouseEnter={() => setResaltado(i)}>
+                          <FotoCliente id={c.id} nombre={c.nombre} version={c.fotoVersion} size={34} />
+                          <span className="cj-res-info">
+                            <strong>{c.nombre}</strong>
+                            <small>C.C. {c.cedula || '—'}{c.telefono ? ` · ${c.telefono}` : ''}</small>
+                          </span>
+                          <span className={`cj-badge ${ep.clase}`}>{ep.clase === 'activo' ? 'Activo' : ep.titulo}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, margin: '8px 0' }}>
-                {planes.filter(p => p.tipo === 'MEMBRESIA' && p.estado === 'ACTIVO').map(plan => (
-                  <button key={plan.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '10px 8px', border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}
-                    onClick={() => agregarAlCarrito(plan, 'plan')}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(59,130,246,0.15)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = 'none'; }}>
-                    <span style={{ fontSize: '1.2rem' }}>⭐</span>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#374151' }}>{plan.nombre}</span>
-                    <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>{COP(plan.precio)}</span>
-                  </button>
-                ))}
-              </div>
             </>
           ) : (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
-              <span style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }}>🔍</span>
-              Busca un cliente para ver su informacion
-            </div>
-          )}
-        </section>
-
-        <section className="pos-panel pos-panel-carrito">
-          <div className="carrito-columna">
-            <h3 className="carrito-titulo">Carrito ({carrito.length})</h3>
-            <div className="carrito-items" style={{ maxHeight: 200, overflow: 'auto' }}>
-              {carrito.length === 0 ? (
-                <p className="carrito-vacio">Vacio</p>
-              ) : carrito.map((item, idx) => (
-                <div key={`${item.tipo}-${item.id}-${idx}`} className="carrito-item-pill">
-                  <span className="item-nombre">{item.tipo === 'plan' ? '⭐ ' : ''}{item.nombre}</span>
-                  {item.tipo === 'producto' ? (
-                    <div className="item-controls">
-                      <button onClick={() => cambiarCantidad(idx, -1)} disabled={item.cantidad <= 1}>−</button>
-                      <span className="item-cantidad">{item.cantidad}</span>
-                      <button onClick={() => cambiarCantidad(idx, 1)}>+</button>
-                    </div>
-                  ) : <span className="item-cantidad">1</span>}
-                  <span className="item-subtotal">{COP(item.precio * item.cantidad)}</span>
-                  <button className="item-eliminar" onClick={() => eliminarDelCarrito(idx)}>✖</button>
+            <>
+              <div className="cj-ficha">
+                <FotoCliente id={cliente.id} nombre={cliente.nombre} version={cliente.fotoVersion} size={54} />
+                <div className="cj-ficha-datos">
+                  <strong title={cliente.nombre}>{cliente.nombre}</strong>
+                  <span><IdCard /> {cliente.cedula || 'Sin cédula'}</span>
+                  {cliente.telefono && <span><Phone /> {cliente.telefono}</span>}
                 </div>
-              ))}
+                <button className="cj-icono cj-quitar" onClick={quitarCliente} title="Cambiar de cliente" aria-label="Quitar cliente"><X /></button>
+              </div>
+              <div className="cj-plan">
+                <plan.icon />
+                <div>
+                  <strong>{plan.titulo}</strong>
+                  <small>{plan.detalle}{cliente.membresia?.tipo && plan.clase !== 'sin' ? ` · ${TIPO_PLAN[cliente.membresia.tipo] || cliente.membresia.tipo}` : ''}</small>
+                </div>
+                <Racha clienteId={cliente.id} />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="cj-planes-box">
+          <div className="cj-sub">
+            <span>{cliente ? (planVigente ? 'Renovar plan' : 'Activar plan') : 'Planes'}</span>
+            {cliente && planVigente && (
+              <small>Empieza el {fechaCorta(sumarDias(cliente.membresia.fechaVencimiento, 1))} · no pierde días</small>
+            )}
+            {!cliente && <small>Elija primero el cliente</small>}
+          </div>
+          <div className={`cj-planes ${!cliente ? 'deshabilitado' : ''}`}>
+            {planes.length === 0 && <p className="cj-res-vacio">No hay planes activos. Créelos en Planes.</p>}
+            {planes.map((p) => (
+              <button key={p.id} className={`cj-plan-btn ${planEnCarrito?.id === p.id ? 'on' : ''}`} onClick={() => agregarPlan(p)}
+                title={!cliente ? 'Seleccione un cliente primero' : `Agregar ${p.nombre}`}>
+                <span className="cj-plan-dur">{p.duracion}<small>{p.duracion === 1 ? 'día' : 'días'}</small></span>
+                <span className="cj-plan-nombre">{p.nombre}</span>
+                <span className="cj-plan-precio">{COP(p.precio)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ===================== 3. TICKET ===================== */}
+      <section className="cj-col cj-ticket">
+        <div className="cj-ticket-head">
+          <span><ShoppingCart /> Cuenta</span>
+          {items > 0 && <span className="cj-contador">{items} {items === 1 ? 'ítem' : 'ítems'}</span>}
+          {carrito.length > 0 && <button className="cj-link" onClick={vaciar}>Vaciar</button>}
+        </div>
+
+        <div className="cj-items">
+          {carrito.length === 0 ? (
+            <div className="cj-items-vacio">
+              {ultimaVenta ? (
+                <>
+                  <CheckCircle2 className="ok" />
+                  <strong>Última venta {COP(ultimaVenta.total)}</strong>
+                  {ultimaVenta.cambio ? <span>Cambio entregado {COP(ultimaVenta.cambio)}</span> : null}
+                  <small>{ultimaVenta.resumen}</small>
+                </>
+              ) : (
+                <>
+                  <ShoppingCart className="vacio" />
+                  <span>Toque un producto o un plan para empezar</span>
+                </>
+              )}
             </div>
+          ) : carrito.map((it, idx) => (
+            <div key={`${it.tipo}-${it.id}-${it.clienteId || ''}`} className={`cj-item ${it.tipo}`}>
+              <div className="cj-item-info">
+                <strong>{it.nombre}</strong>
+                <small>{it.tipo === 'plan' ? `Plan · ${it.clienteNombre}` : `${COP(it.precio)} c/u`}</small>
+              </div>
+              {it.tipo === 'producto' && (
+                <div className="cj-cant">
+                  <button onClick={() => cambiarCantidad(idx, -1)} aria-label="Quitar uno"><Minus /></button>
+                  <span>{it.cantidad}</span>
+                  <button onClick={() => cambiarCantidad(idx, 1)} aria-label="Agregar uno"><Plus /></button>
+                </div>
+              )}
+              <span className="cj-item-total">{COP(it.precio * it.cantidad)}</span>
+              <button className="cj-icono" onClick={() => eliminarItem(idx)} aria-label={`Quitar ${it.nombre}`}><Trash2 /></button>
+            </div>
+          ))}
+        </div>
+
+        <div className="cj-corte" aria-hidden="true" />
+
+        <div className="cj-pago">
+          <div className="cj-total">
+            <span>Total a cobrar</span>
+            <strong>{COP(total)}</strong>
           </div>
 
-          <div className="totales-columna">
-            <div className="total-pill">
-              <span>Total:</span>
-              <span className="total-pill-monto">{COP(total)}</span>
-            </div>
-            <div className="total-pill total-pill-metodo">
-              <span>Pago:</span>
-              <div className="metodo-pago-toggle">
-                {[['efectivo', '💵', 'Efectivo'], ['transferencia', '🏦', 'Transferencia'], ['tarjeta', '💳', 'Tarjeta']].map(([m, icon, label]) => (
-                  <button key={m} className={`metodo-toggle-btn ${metodoPago === m ? 'active' : ''}`} onClick={() => setMetodoPago(m)}>
-                    <span className="metodo-icon">{icon}</span> {label}
-                  </button>
+          <div className="cj-metodos" role="radiogroup" aria-label="Medio de pago">
+            {METODOS.map((m) => (
+              <button key={m.id} role="radio" aria-checked={metodoPago === m.id}
+                className={metodoPago === m.id ? 'on' : ''} onClick={() => setMetodoPago(m.id)}>
+                <m.icon /> {m.label}
+              </button>
+            ))}
+          </div>
+
+          {metodoPago === 'CASH' && (
+            <div className={`cj-bloque cj-efectivo ${total === 0 ? 'inactivo' : ''}`}>
+              <div className="cj-recibido-fila">
+                <label className="cj-recibido-caja">
+                  <span>Recibe</span>
+                  <input className="cj-recibido" inputMode="numeric" disabled={total === 0} aria-label="Efectivo recibido"
+                    value={montoRecibido ? `$ ${Number(montoRecibido).toLocaleString('es-CO')}` : ''}
+                    onChange={(e) => setMontoRecibido(e.target.value.replace(/\D/g, ''))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') procesarVenta(); }}
+                    placeholder={total ? COP(total) : '$ 0'} />
+                </label>
+                <div className={`cj-cambio ${recibido > 0 && cambio < 0 ? 'falta' : ''} ${recibido > 0 ? '' : 'neutro'}`}>
+                  <span>{recibido > 0 && cambio < 0 ? 'Falta' : 'Cambio'}</span>
+                  <strong>{recibido > 0 ? COP(Math.abs(cambio)) : '$0'}</strong>
+                </div>
+              </div>
+              <div className="cj-billetes">
+                <button disabled={total === 0} className={recibido === total && total > 0 ? 'on' : ''}
+                  onClick={() => setMontoRecibido(String(total))}>Exacto</button>
+                {montosSugeridos(total).map((b) => (
+                  <button key={b} disabled={total === 0} className={recibido === b ? 'on' : ''}
+                    onClick={() => setMontoRecibido(String(b))}>{COP(b)}</button>
                 ))}
               </div>
             </div>
-            {metodoPago === 'efectivo' && (
-              <div className="total-pill total-pill-input">
-                <span>Recibido:</span>
-                <input className="input-moneda-pos" type="text" placeholder="$ 0"
-                  value={montoRecibido ? '$ ' + Number(montoRecibido).toLocaleString('es-CO') : ''}
-                  onChange={e => setMontoRecibido(e.target.value.replace(/[^0-9]/g, ''))} />
-              </div>
-            )}
-            {cambio != null && (
-              <div className="total-pill">
-                <span>Cambio:</span>
-                <span className={`total-pill-monto ${cambio >= 0 ? 'cambio-correcto' : 'cambio-insuficiente'}`}>
-                  {cambio >= 0 ? COP(cambio) : `Falta ${COP(Math.abs(cambio))}`}
-                </span>
-              </div>
-            )}
-            <button className="realizar-venta-btn" onClick={procesarVenta}
-              disabled={procesando || carrito.length === 0}
-              style={{ opacity: procesando || carrito.length === 0 ? 0.5 : 1 }}>
-              {procesando ? 'Procesando...' : 'Realizar Venta'}
-            </button>
-          </div>
-        </section>
-      </div>
+          )}
 
-      <style>{`
-        .streak-container { display: flex; align-items: center; gap: 6px; }
-        .streak-animating span { animation: firePulse 0.8s ease-in-out 2; }
-        @keyframes firePulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.3) rotate(5deg); } }
-        .membresia-badge { transition: all 0.2s; }
-      `}</style>
+          {!turnoValido && !verificandoTurno ? (
+            <div className="cj-sin-turno">
+              <Lock />
+              <span>Abra un turno de caja para poder cobrar</span>
+              {onAbrirTurno && <button className="sg-btn sg-btn-primary" onClick={onAbrirTurno}>Abrir turno</button>}
+            </div>
+          ) : (
+            <button className="cj-cobrar" onClick={procesarVenta} disabled={Boolean(motivoBloqueo) || procesando}>
+              {procesando ? 'Registrando…' : carrito.length === 0 ? 'Cobrar' : motivoBloqueo || <>Cobrar <b>{COP(total)}</b></>}
+            </button>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

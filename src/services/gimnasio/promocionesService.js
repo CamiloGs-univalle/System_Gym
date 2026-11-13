@@ -1,4 +1,5 @@
 import { guardarSincronizado } from '../storageSync';
+import { fechaLocalISO } from "../../utils/formatters";
 // ============================================================
 // SERVICIO DE DESCUENTOS Y PROMOCIONES
 // Tipos: PORCENTAJE | VALOR_FIJO | 2X1 | PRIMER_MES | REFERIDO | LEALTAD | ESTUDIANTE | CORPORATIVO
@@ -18,7 +19,7 @@ function guardar(promos) {
   guardarSincronizado(STORAGE_KEY, promos);
 }
 
-function hoy() { return new Date().toISOString().split('T')[0]; }
+function hoy() { return fechaLocalISO(); }
 
 const PROMOS_DEFAULT = [
   { id: 1, codigo: "ESTUDIANTE20", nombre: "Descuento Estudiantes", tipo: "PORCENTAJE", porcentaje: 20, aplicable: "PLANES", condiciones: { segmento: "ESTUDIANTE" }, vigenciaInicio: "2026-01-01", vigenciaFin: "2026-12-31", usosMaximos: 100, usosActuales: 0, combinable: false, autorizacionRequerida: false, estado: "ACTIVA" },
