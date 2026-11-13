@@ -8,3 +8,6 @@ jre/
 .env
 release/
 dist/
+
+# Código sin uso apartado durante la limpieza (revisar y borrar)
+_descartado/

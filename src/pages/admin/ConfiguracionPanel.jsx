@@ -1,602 +1,365 @@
-import { guardarSincronizado } from '../../services/storageSync';
 // ============================================================
-// ARCHIVO: src/pages/admin/ConfiguracionPanel.jsx
-// DESCRIPCIÓN: Panel de configuración del sistema
-// VERSIÓN: 3.1 - CON FALLBACK PARA DATOS LOCALES
+// Configuración del sistema
+// ------------------------------------------------------------
+// - Todo se edita directamente; al haber cambios aparece una barra para
+//   guardar o descartar (antes había que pulsar "Editar" en la parte de
+//   arriba y era fácil no verlo).
+// - "Planes y precios" administra los planes reales (los que usan la caja,
+//   clientes y renovaciones): agregar, cambiar, activar/desactivar y borrar.
 // ============================================================
-
-import { useState, useEffect } from "react";
-import Card from "../../components/ui/Card";
-import Button from "../../components/ui/Button";
-import { formatDate, formatCurrencyInput } from "../../utils/formatters";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Building2, Tags, Clock3, CalendarClock, Bell, DatabaseBackup, Smartphone,
+  Plus, Trash2, Save, Undo2, CheckCircle2, Info,
+} from "lucide-react";
+import { guardarSincronizado } from "../../services/storageSync";
+import { planesService } from "../../services/gimnasio/planesService";
+import { CONFIG_DEFAULT, leerConfiguracion } from "../../utils/configuracion";
 import RespaldosCard from "../../components/system/RespaldosCard";
+import PanelWebCard from "../../components/system/PanelWebCard";
+import "./configuracion.css";
 
-// ============================================================
-// CONSTANTES
-// ============================================================
 const DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
-const CONFIG_DEFAULT = {
-    // Datos reales del gimnasio: se llenan en Configuración (no se inventan)
-    nombreGimnasio: "",
-    nit: "",
-    direccion: "",
-    telefono: "",
-    email: "",
-    horarioApertura: "05:00",
-    horarioCierre: "22:00",
-    diasLaborales: ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
-    notificaciones: {
-        recordatorioVencimiento: true,
-        diasAnticipacion: 3,
-        notificarStockBajo: true,
-        stockMinimoGlobal: 5
-    },
-    turnos: {
-        turnoCompleto: { horaInicio: "06:00", horaFin: "14:00" },
-        medioTurno: { horaInicio: "06:00", horaFin: "10:00" },
-        turnoTarde: { horaInicio: "14:00", horaFin: "22:00" }
-    },
-    impuestos: {
-        iva: 19,
-        retefuente: 0.5
-    }
-};
-
-const MEMBRESIAS_DEFAULT = [
-    { id: 1, nombre: "30 días", precio: 80000, duracion: 30 },
-    { id: 2, nombre: "15 días", precio: 50000, duracion: 15 },
-    { id: 3, nombre: "Trimestral", precio: 220000, duracion: 90 },
-    { id: 4, nombre: "Semestral", precio: 400000, duracion: 180 },
-    { id: 5, nombre: "Anual", precio: 750000, duracion: 365 }
+const SECCIONES = [
+  { id: "general", label: "Datos del gimnasio", icon: Building2, guarda: true },
+  { id: "planes", label: "Planes y precios", icon: Tags, guarda: true },
+  { id: "horario", label: "Horario", icon: Clock3, guarda: true },
+  { id: "turnos", label: "Horario de turnos", icon: CalendarClock, guarda: true },
+  { id: "avisos", label: "Avisos", icon: Bell, guarda: true },
+  { id: "respaldos", label: "Respaldos", icon: DatabaseBackup },
+  { id: "panel", label: "Panel web (celular)", icon: Smartphone },
 ];
 
-// ============================================================
-// COMPONENTE PRINCIPAL
-// ============================================================
-export default function ConfiguracionPanel() {
-    // ============================================================
-    // 1. ESTADO
-    // ============================================================
+const TURNOS = [
+  { key: "turnoCompleto", label: "Turno completo" },
+  { key: "medioTurno", label: "Medio turno" },
+  { key: "turnoTarde", label: "Turno tarde" },
+];
 
-    const [seccionActiva, setSeccionActiva] = useState("general");
-    const [cargando, setCargando] = useState(true);
-    const [guardando, setGuardando] = useState(false);
-    const [mensajeExito, setMensajeExito] = useState("");
-    const [error, setError] = useState(null);
+const TIPOS_PLAN = [
+  { id: "MEMBRESIA", label: "Membresía (da acceso al gimnasio)" },
+  { id: "SERVICIO", label: "Servicio (entrenador, nutrición…)" },
+];
 
-    const [editando, setEditando] = useState(false);
-    const [configuracion, setConfiguracion] = useState(CONFIG_DEFAULT);
-    const [form, setForm] = useState(CONFIG_DEFAULT);
-    const [membresias, setMembresias] = useState(MEMBRESIAS_DEFAULT);
+const copia = (v) => JSON.parse(JSON.stringify(v));
+const soloNumero = (v) => Number(String(v).replace(/\D/g, "")) || 0;
+const pesos = (v) => (v ? Number(v).toLocaleString("es-CO") : "");
 
-    // ============================================================
-    // 2. SECCIONES
-    // ============================================================
-
-    const secciones = [
-        { id: "general", label: "🏢 General", icon: "🏢" },
-        { id: "membresias", label: "📋 Membresías", icon: "📋" },
-        { id: "horarios", label: "🕐 Horarios", icon: "🕐" },
-        { id: "turnos", label: "🔄 Turnos", icon: "🔄" },
-        { id: "notificaciones", label: "🔔 Notificaciones", icon: "🔔" },
-        { id: "impuestos", label: "💰 Impuestos", icon: "💰" },
-    ];
-
-    // ============================================================
-    // 3. CARGAR DATOS
-    // ============================================================
-
-    useEffect(() => {
-        cargarDatos();
-    }, []);
-
-    const cargarDatos = async () => {
-        setCargando(true);
-        try {
-            // Intentar cargar desde localStorage
-            const localConfig = localStorage.getItem('gym_configuracion');
-            const localMembresias = localStorage.getItem('gym_membresias');
-
-            if (localConfig) {
-                const parsed = JSON.parse(localConfig);
-                setConfiguracion(parsed);
-                setForm(parsed);
-            }
-
-            if (localMembresias) {
-                setMembresias(JSON.parse(localMembresias));
-            }
-
-            console.log("✅ Configuración cargada desde localStorage");
-        } catch (err) {
-            console.error("❌ Error cargando datos:", err);
-        } finally {
-            setCargando(false);
-        }
-    };
-
-    // ============================================================
-    // 4. MANEJADORES DE CAMBIOS
-    // ============================================================
-
-    const handleSimpleChange = (campo, valor) => {
-        setForm(prev => ({ ...prev, [campo]: valor }));
-    };
-
-    const handleChange = (categoria, campo, valor) => {
-        setForm(prev => ({
-            ...prev,
-            [categoria]: {
-                ...prev[categoria],
-                [campo]: valor
-            }
-        }));
-    };
-
-    const handlePrecioMembresia = (id, valor) => {
-        setMembresias(prev => prev.map(m => 
-            m.id === id ? { ...m, precio: parseInt(valor) || 0 } : m
-        ));
-    };
-
-    // ============================================================
-    // 5. GUARDAR CONFIGURACIÓN
-    // ============================================================
-
-    const guardarConfiguracion = async () => {
-        setGuardando(true);
-        setError(null);
-        setMensajeExito("");
-
-        try {
-            // Guardar en localStorage
-            guardarSincronizado('gym_configuracion', form);
-            guardarSincronizado('gym_membresias', membresias);
-
-            setConfiguracion(JSON.parse(JSON.stringify(form)));
-            setEditando(false);
-            setMensajeExito("✅ Configuración guardada exitosamente");
-            
-            setTimeout(() => setMensajeExito(""), 5000);
-
-        } catch (err) {
-            console.error("❌ Error guardando:", err);
-            setError("Error al guardar la configuración");
-        } finally {
-            setGuardando(false);
-        }
-    };
-
-    const cancelarEdicion = () => {
-        setForm(JSON.parse(JSON.stringify(configuracion)));
-        setEditando(false);
-        setError(null);
-    };
-
-    // ============================================================
-    // 6. RENDER DE SECCIONES
-    // ============================================================
-
-    const renderGeneral = () => (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "#111827" }}>
-                Información General del Gimnasio
-            </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "16px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>Nombre del Gimnasio</label>
-                    <input 
-                        type="text" 
-                        value={form?.nombreGimnasio || ""}
-                        onChange={(e) => handleSimpleChange("nombreGimnasio", e.target.value)}
-                        disabled={!editando}
-                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                    />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>NIT</label>
-                    <input 
-                        type="text" 
-                        value={form?.nit || ""}
-                        onChange={(e) => handleSimpleChange("nit", e.target.value)}
-                        disabled={!editando}
-                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                    />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px", gridColumn: "1 / -1" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>Dirección</label>
-                    <input 
-                        type="text" 
-                        value={form?.direccion || ""}
-                        onChange={(e) => handleSimpleChange("direccion", e.target.value)}
-                        disabled={!editando}
-                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                    />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>Teléfono</label>
-                    <input 
-                        type="text" 
-                        value={form?.telefono || ""}
-                        onChange={(e) => handleSimpleChange("telefono", e.target.value)}
-                        disabled={!editando}
-                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                    />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>Email</label>
-                    <input 
-                        type="email" 
-                        value={form?.email || ""}
-                        onChange={(e) => handleSimpleChange("email", e.target.value)}
-                        disabled={!editando}
-                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                    />
-                </div>
-            </div>
-
-            {!editando && (
-                <div style={{ padding: "16px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
-                    <h4 style={{ margin: "0 0 12px", fontSize: "14px", color: "#374151" }}>📊 Resumen</h4>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "8px" }}>
-                        <div><span style={{ color: "#6b7280" }}>Nombre:</span> <strong>{configuracion?.nombreGimnasio}</strong></div>
-                        <div><span style={{ color: "#6b7280" }}>NIT:</span> <strong>{configuracion?.nit}</strong></div>
-                        <div><span style={{ color: "#6b7280" }}>Teléfono:</span> <strong>{configuracion?.telefono}</strong></div>
-                        <div><span style={{ color: "#6b7280" }}>Email:</span> <strong>{configuracion?.email}</strong></div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-
-    const renderMembresias = () => (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "#111827" }}>
-                Precios de Membresías
-            </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
-                {membresias.map(m => (
-                    <div key={m.id} style={{ padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
-                        <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#374151", marginBottom: "4px" }}>
-                            {m.nombre}
-                        </label>
-                        <div style={{ display: "flex", alignItems: "center" }}>
-                            <span style={{ color: "#6b7280", marginRight: "4px" }}>$</span>
-                            <input 
-                                type="text"
-                                inputMode="numeric"
-                                value={formatCurrencyInput(m.precio)}
-                                onChange={(e) => handlePrecioMembresia(m.id, e.target.value.replace(/[^0-9]/g, ''))}
-                                disabled={!editando}
-                                style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                            />
-                        </div>
-                        <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-                            Duración: {m.duracion} días
-                        </div>
-                    </div>
-                ))}
-            </div>
-            <div style={{ padding: "12px 16px", background: "#eff6ff", borderRadius: "8px", border: "1px solid #bfdbfe" }}>
-                <p style={{ margin: 0, fontSize: "13px", color: "#1e40af" }}>
-                    💡 Los precios de membresía se aplican automáticamente al crear o editar un cliente.
-                </p>
-            </div>
-        </div>
-    );
-
-    const renderHorarios = () => (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "#111827" }}>
-                Horario del Gimnasio
-            </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>Hora de Apertura</label>
-                    <input 
-                        type="time" 
-                        value={form?.horarioApertura || "05:00"}
-                        onChange={(e) => handleSimpleChange("horarioApertura", e.target.value)}
-                        disabled={!editando}
-                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                    />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>Hora de Cierre</label>
-                    <input 
-                        type="time" 
-                        value={form?.horarioCierre || "22:00"}
-                        onChange={(e) => handleSimpleChange("horarioCierre", e.target.value)}
-                        disabled={!editando}
-                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                    />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px", gridColumn: "1 / -1" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>Días Laborales</label>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                        {DIAS_SEMANA.map(dia => (
-                            <label key={dia} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", cursor: editando ? "pointer" : "default" }}>
-                                <input 
-                                    type="checkbox"
-                                    checked={form?.diasLaborales?.includes(dia) || false}
-                                    onChange={(e) => {
-                                        if (!editando) return;
-                                        if (e.target.checked) {
-                                            handleSimpleChange("diasLaborales", [...(form?.diasLaborales || []), dia]);
-                                        } else {
-                                            handleSimpleChange("diasLaborales", (form?.diasLaborales || []).filter(d => d !== dia));
-                                        }
-                                    }}
-                                    disabled={!editando}
-                                />
-                                {dia}
-                            </label>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
-    const renderTurnos = () => (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "#111827" }}>
-                Configuración de Turnos
-            </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
-                {[
-                    { key: "turnoCompleto", label: "Turno Completo" },
-                    { key: "medioTurno", label: "Medio Turno" },
-                    { key: "turnoTarde", label: "Turno Tarde" }
-                ].map(({ key, label }) => (
-                    <div key={key} style={{ padding: "16px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
-                        <h4 style={{ margin: "0 0 12px", fontSize: "14px", color: "#374151" }}>{label}</h4>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                            <div>
-                                <label style={{ display: "block", fontSize: "12px", color: "#6b7280", marginBottom: "2px" }}>Inicio</label>
-                                <input 
-                                    type="time" 
-                                    value={form?.turnos?.[key]?.horaInicio || "06:00"}
-                                    onChange={(e) => handleChange("turnos", key, {
-                                        ...(form?.turnos?.[key] || {}),
-                                        horaInicio: e.target.value
-                                    })}
-                                    disabled={!editando}
-                                    style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                                />
-                            </div>
-                            <div>
-                                <label style={{ display: "block", fontSize: "12px", color: "#6b7280", marginBottom: "2px" }}>Fin</label>
-                                <input 
-                                    type="time" 
-                                    value={form?.turnos?.[key]?.horaFin || "14:00"}
-                                    onChange={(e) => handleChange("turnos", key, {
-                                        ...(form?.turnos?.[key] || {}),
-                                        horaFin: e.target.value
-                                    })}
-                                    disabled={!editando}
-                                    style={{ width: "100%", padding: "6px 10px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-
-    const renderNotificaciones = () => (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "#111827" }}>
-                Configuración de Notificaciones
-            </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: editando ? "pointer" : "default" }}>
-                        <input 
-                            type="checkbox" 
-                            checked={form?.notificaciones?.recordatorioVencimiento || false}
-                            onChange={(e) => handleChange("notificaciones", "recordatorioVencimiento", e.target.checked)}
-                            disabled={!editando}
-                        />
-                        <span style={{ fontWeight: "500" }}>Recordatorio de vencimiento</span>
-                    </label>
-                    <span style={{ fontSize: "13px", color: "#6b7280" }}>Envía recordatorios cuando una membresía esté por vencer</span>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
-                    <div>
-                        <label style={{ display: "block", fontSize: "12px", color: "#6b7280", marginBottom: "2px" }}>Días de anticipación</label>
-                        <input 
-                            type="number" 
-                            value={form?.notificaciones?.diasAnticipacion || 3}
-                            onChange={(e) => handleChange("notificaciones", "diasAnticipacion", parseInt(e.target.value) || 0)}
-                            disabled={!editando}
-                            style={{ width: "80px", padding: "6px 10px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                        />
-                    </div>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: editando ? "pointer" : "default" }}>
-                        <input 
-                            type="checkbox" 
-                            checked={form?.notificaciones?.notificarStockBajo || false}
-                            onChange={(e) => handleChange("notificaciones", "notificarStockBajo", e.target.checked)}
-                            disabled={!editando}
-                        />
-                        <span style={{ fontWeight: "500" }}>Notificar stock bajo</span>
-                    </label>
-                    <span style={{ fontSize: "13px", color: "#6b7280" }}>Alerta cuando el stock esté por debajo del mínimo</span>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
-                    <div>
-                        <label style={{ display: "block", fontSize: "12px", color: "#6b7280", marginBottom: "2px" }}>Stock mínimo global</label>
-                        <input 
-                            type="number" 
-                            value={form?.notificaciones?.stockMinimoGlobal || 5}
-                            onChange={(e) => handleChange("notificaciones", "stockMinimoGlobal", parseInt(e.target.value) || 0)}
-                            disabled={!editando}
-                            style={{ width: "80px", padding: "6px 10px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                        />
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
-    const renderImpuestos = () => (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "#111827" }}>
-                Configuración de Impuestos
-            </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>IVA (%)</label>
-                    <input 
-                        type="number" 
-                        step="0.1"
-                        value={form?.impuestos?.iva || 19}
-                        onChange={(e) => handleChange("impuestos", "iva", parseFloat(e.target.value) || 0)}
-                        disabled={!editando}
-                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                    />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#475569" }}>Retefuente (%)</label>
-                    <input 
-                        type="number" 
-                        step="0.1"
-                        value={form?.impuestos?.retefuente || 0.5}
-                        onChange={(e) => handleChange("impuestos", "retefuente", parseFloat(e.target.value) || 0)}
-                        disabled={!editando}
-                        style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #d1d5db", fontSize: "14px", background: editando ? "white" : "#f8fafc" }}
-                    />
-                </div>
-            </div>
-            {!editando && (
-                <div style={{ padding: "12px 16px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px" }}>
-                        <div><span style={{ color: "#6b7280" }}>IVA:</span> <strong>{form?.impuestos?.iva || 19}%</strong></div>
-                        <div><span style={{ color: "#6b7280" }}>Retefuente:</span> <strong>{form?.impuestos?.retefuente || 0.5}%</strong></div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-
-    const renderSeccion = () => {
-        switch (seccionActiva) {
-            case "general": return renderGeneral();
-            case "membresias": return renderMembresias();
-            case "horarios": return renderHorarios();
-            case "turnos": return renderTurnos();
-            case "notificaciones": return renderNotificaciones();
-            case "impuestos": return renderImpuestos();
-            default: return null;
-        }
-    };
-
-    // ============================================================
-    // 7. RENDER PRINCIPAL
-    // ============================================================
-
-    if (cargando) {
-        return (
-            <div style={{ textAlign: "center", padding: "80px 20px" }}>
-                <div style={{ width: "40px", height: "40px", border: "4px solid #f3f4f6", borderTop: "4px solid #3b82f6", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 20px" }} />
-                <p style={{ color: "#6b7280" }}>Cargando configuración...</p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-            </div>
-        );
-    }
-
-    return (
-        <div style={{ padding: "20px", maxHeight: "calc(100vh - 80px)", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
-            {/* Mensajes */}
-            {mensajeExito && (
-                <div style={{ background: "#d1fae5", color: "#065f46", padding: "12px 16px", borderRadius: "8px", marginBottom: "16px", border: "1px solid #6ee7b7" }}>
-                    {mensajeExito}
-                </div>
-            )}
-            {error && editando && (
-                <div style={{ background: "#fee2e2", color: "#991b1b", padding: "12px 16px", borderRadius: "8px", marginBottom: "16px", border: "1px solid #fca5a5" }}>
-                    ❌ {error}
-                    <button onClick={() => setError(null)} style={{ background: "none", border: "none", cursor: "pointer", float: "right", fontSize: "18px" }}>✕</button>
-                </div>
-            )}
-
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px", paddingBottom: "12px", borderBottom: "2px solid #e5e7eb" }}>
-                <h2 style={{ margin: 0, fontSize: "22px", color: "#111827" }}>⚙️ Configuración del Sistema</h2>
-                <div style={{ display: "flex", gap: "8px" }}>
-                    {!editando ? (
-                        <Button variant="primary" onClick={() => setEditando(true)}>
-                            ✏️ Editar
-                        </Button>
-                    ) : (
-                        <>
-                            <Button variant="success" onClick={guardarConfiguracion} disabled={guardando}>
-                                {guardando ? "⏳ Guardando..." : "💾 Guardar"}
-                            </Button>
-                            <Button variant="danger" onClick={cancelarEdicion} disabled={guardando}>
-                                ❌ Cancelar
-                            </Button>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* Respaldos automáticos de la base de datos */}
-            <RespaldosCard />
-
-            {/* Body */}
-            <div style={{ display: "flex", gap: "16px", flex: 1, overflow: "hidden" }}>
-                {/* Sidebar */}
-                <aside style={{ width: "180px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
-                    {secciones.map(sec => {
-                        const active = seccionActiva === sec.id;
-                        return (
-                            <button
-                                key={sec.id}
-                                onClick={() => setSeccionActiva(sec.id)}
-                                style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "10px",
-                                    padding: "10px 14px",
-                                    borderRadius: "8px",
-                                    border: "none",
-                                    background: active ? "#3b82f6" : "transparent",
-                                    color: active ? "white" : "#6b7280",
-                                    cursor: "pointer",
-                                    fontSize: "13px",
-                                    fontWeight: active ? "600" : "500",
-                                    transition: "all 0.15s"
-                                }}
-                            >
-                                <span>{sec.icon}</span>
-                                <span>{sec.label}</span>
-                            </button>
-                        );
-                    })}
-                </aside>
-
-                {/* Content */}
-                <main style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
-                    <div style={{ background: "white", borderRadius: "12px", padding: "20px", border: "1px solid #e5e7eb", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-                        {renderSeccion()}
-                    </div>
-                </main>
-            </div>
-
-            {/* Footer */}
-            <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", fontSize: "13px", color: "#6b7280" }}>
-                <span>Estado: <strong style={{ color: editando ? "#f59e0b" : "#10b981" }}>{editando ? "✏️ Editando" : "✅ Guardado"}</strong></span>
-                <span>Última modificación: {formatDate(new Date().toISOString())}</span>
-            </div>
-        </div>
-    );
+function Campo({ label, ayuda, children, ancho }) {
+  return (
+    <label className={`cfg-campo ${ancho ? "ancho" : ""}`}>
+      <span className="cfg-label">{label}</span>
+      {children}
+      {ayuda && <small className="cfg-ayuda">{ayuda}</small>}
+    </label>
+  );
 }
+
+export default function ConfiguracionPanel() {
+  const [seccion, setSeccion] = useState("general");
+  const [guardado, setGuardado] = useState(() => leerConfiguracion());
+  const [form, setForm] = useState(() => leerConfiguracion());
+  const [planesGuardados, setPlanesGuardados] = useState(() => planesService.listar());
+  const [planes, setPlanes] = useState(() => copia(planesService.listar()));
+  const [mensaje, setMensaje] = useState(null);
+  const [errores, setErrores] = useState([]);
+
+  const cambiosConfig = JSON.stringify(form) !== JSON.stringify(guardado);
+  const cambiosPlanes = JSON.stringify(planes) !== JSON.stringify(planesGuardados);
+  const hayCambios = cambiosConfig || cambiosPlanes;
+
+  // Avisa si intenta salir de la app con cambios sin guardar
+  useEffect(() => {
+    const antes = (e) => { if (hayCambios) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", antes);
+    return () => window.removeEventListener("beforeunload", antes);
+  }, [hayCambios]);
+
+  const set = (campo, valor) => setForm((f) => ({ ...f, [campo]: valor }));
+  const setGrupo = (grupo, campo, valor) => setForm((f) => ({ ...f, [grupo]: { ...f[grupo], [campo]: valor } }));
+  const setTurno = (key, campo, valor) =>
+    setForm((f) => ({ ...f, turnos: { ...f.turnos, [key]: { ...f.turnos[key], [campo]: valor } } }));
+
+  // ---------------- Planes ----------------
+  const setPlan = (id, campo, valor) =>
+    setPlanes((lista) => lista.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)));
+
+  const agregarPlan = () => {
+    const id = Math.max(0, ...planes.map((p) => Number(p.id) || 0)) + 1;
+    setPlanes((lista) => [...lista, {
+      id, nombre: "", tipo: "MEMBRESIA", categoria: "MUSCULACION", precio: 0, duracion: 30,
+      unidadDuracion: "DIAS", renovacion: "MANUAL", accesosIncluidos: [], serviciosIncluidos: [],
+      horarioPermitido: null, sedePrincipal: "PRINCIPAL", comisionEntrenador: 0, iva: "EXENTO",
+      estado: "ACTIVO", creadoEn: new Date().toISOString(), _nuevo: true,
+    }]);
+    setSeccion("planes");
+  };
+
+  const borrarPlan = (p) => {
+    const nombre = p.nombre || "este plan";
+    if (!window.confirm(`¿Borrar ${nombre}? Los clientes que ya lo pagaron conservan su plan; solo deja de ofrecerse.`)) return;
+    setPlanes((lista) => lista.filter((x) => x.id !== p.id));
+  };
+
+  // ---------------- Validación y guardado ----------------
+  const validar = () => {
+    const e = [];
+    if (!form.nombreGimnasio.trim()) e.push("Escriba el nombre del gimnasio (aparece en desprendibles y reportes).");
+    planes.forEach((p, i) => {
+      const n = p.nombre?.trim() || `Plan ${i + 1}`;
+      if (!p.nombre?.trim()) e.push(`El plan ${i + 1} no tiene nombre.`);
+      if (!(Number(p.precio) > 0)) e.push(`${n}: el precio debe ser mayor a cero.`);
+      if (!(Number(p.duracion) > 0)) e.push(`${n}: la duración debe ser de al menos 1.`);
+    });
+    const nombres = planes.map((p) => p.nombre?.trim().toLowerCase()).filter(Boolean);
+    if (new Set(nombres).size !== nombres.length) e.push("Hay dos planes con el mismo nombre.");
+    TURNOS.forEach(({ key, label }) => {
+      const t = form.turnos[key];
+      if (!t.horaInicio || !t.horaFin) e.push(`${label}: indique hora de inicio y fin.`);
+    });
+    if (!form.horarioApertura || !form.horarioCierre) e.push("Indique la hora de apertura y de cierre.");
+    return e;
+  };
+
+  const guardar = () => {
+    const e = validar();
+    setErrores(e);
+    if (e.length) {
+      setMensaje({ tipo: "error", texto: "Revise los datos marcados antes de guardar." });
+      return;
+    }
+    const cfg = { ...form, actualizadoEn: new Date().toISOString() };
+    guardarSincronizado("gym_configuracion", cfg);
+    const limpios = planes.map(({ _nuevo, ...p }) => ({
+      ...p,
+      nombre: p.nombre.trim(),
+      precio: Number(p.precio) || 0,
+      duracion: Number(p.duracion) || 1,
+      actualizadoEn: new Date().toISOString(),
+    }));
+    planesService.guardarTodos(limpios);
+    setGuardado(cfg);
+    setForm(cfg);
+    setPlanesGuardados(limpios);
+    setPlanes(copia(limpios));
+    setMensaje({ tipo: "ok", texto: "Cambios guardados." });
+    setTimeout(() => setMensaje(null), 4000);
+  };
+
+  const descartar = () => {
+    setForm(copia(guardado));
+    setPlanes(copia(planesGuardados));
+    setErrores([]);
+    setMensaje(null);
+  };
+
+  const ultimaModificacion = useMemo(() => (guardado.actualizadoEn
+    ? new Date(guardado.actualizadoEn).toLocaleString("es-CO", { dateStyle: "long", timeStyle: "short" })
+    : null), [guardado.actualizadoEn]);
+
+  // ---------------- Secciones ----------------
+  const vistaGeneral = () => (
+    <>
+      <p className="cfg-intro">Estos datos aparecen en los desprendibles de pago, los reportes y el panel web.</p>
+      <div className="cfg-grid">
+        <Campo label="Nombre del gimnasio *">
+          <input className="sg-input" value={form.nombreGimnasio} onChange={(e) => set("nombreGimnasio", e.target.value)} placeholder="Ej: Gimnasio Titán" />
+        </Campo>
+        <Campo label="NIT">
+          <input className="sg-input" value={form.nit} onChange={(e) => set("nit", e.target.value)} placeholder="900.123.456-7" />
+        </Campo>
+        <Campo label="Dirección" ancho>
+          <input className="sg-input" value={form.direccion} onChange={(e) => set("direccion", e.target.value)} placeholder="Calle, número, ciudad" />
+        </Campo>
+        <Campo label="Teléfono">
+          <input className="sg-input" inputMode="tel" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} />
+        </Campo>
+        <Campo label="Correo">
+          <input className="sg-input" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
+        </Campo>
+      </div>
+    </>
+  );
+
+  const vistaPlanes = () => (
+    <>
+      <div className="cfg-head-acciones">
+        <p className="cfg-intro">
+          Son los planes que se cobran en la caja y al registrar o renovar clientes. Desactivar un plan lo oculta
+          sin borrarlo; los clientes que ya lo tienen no se afectan.
+        </p>
+        <button className="sg-btn sg-btn-primary" onClick={agregarPlan}><Plus /> Agregar plan</button>
+      </div>
+
+      {planes.length === 0 ? (
+        <div className="cfg-vacio">No hay planes. Agregue el primero.</div>
+      ) : (
+        <div className="cfg-planes">
+          <div className="cfg-plan cfg-plan-titulos" aria-hidden="true">
+            <span>Nombre</span><span>Tipo</span><span>Duración (días)</span><span>Precio</span><span>Estado</span><span />
+          </div>
+          {planes.map((p) => {
+            const activo = p.estado !== "INACTIVO";
+            return (
+              <div key={p.id} className={`cfg-plan ${activo ? "" : "inactivo"} ${p._nuevo ? "nuevo" : ""}`}>
+                <input className="sg-input" aria-label="Nombre del plan" value={p.nombre}
+                  onChange={(e) => setPlan(p.id, "nombre", e.target.value)} placeholder="Ej: Mensual" autoFocus={p._nuevo} />
+                <select className="sg-select" aria-label="Tipo" value={p.tipo || "MEMBRESIA"} onChange={(e) => setPlan(p.id, "tipo", e.target.value)}>
+                  {TIPOS_PLAN.map((t) => <option key={t.id} value={t.id}>{t.id === "MEMBRESIA" ? "Membresía" : "Servicio"}</option>)}
+                </select>
+                <input className="sg-input" aria-label="Duración en días" inputMode="numeric" value={p.duracion || ""}
+                  onChange={(e) => setPlan(p.id, "duracion", soloNumero(e.target.value))} />
+                <div className="cfg-precio">
+                  <span>$</span>
+                  <input className="sg-input" aria-label="Precio" inputMode="numeric" value={pesos(p.precio)}
+                    onChange={(e) => setPlan(p.id, "precio", soloNumero(e.target.value))} placeholder="0" />
+                </div>
+                <button className={`cfg-switch ${activo ? "on" : ""}`} role="switch" aria-checked={activo}
+                  onClick={() => setPlan(p.id, "estado", activo ? "INACTIVO" : "ACTIVO")}>
+                  <span /> {activo ? "Activo" : "Inactivo"}
+                </button>
+                <button className="cfg-borrar" onClick={() => borrarPlan(p)} aria-label={`Borrar ${p.nombre || "plan"}`} title="Borrar plan">
+                  <Trash2 />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <p className="cfg-nota"><Info /> En la caja solo aparecen los planes de tipo <b>Membresía</b> que estén <b>activos</b>.</p>
+    </>
+  );
+
+  const vistaHorario = () => (
+    <>
+      <p className="cfg-intro">Horario de atención del gimnasio (informativo).</p>
+      <div className="cfg-grid">
+        <Campo label="Abre a las">
+          <input className="sg-input" type="time" value={form.horarioApertura} onChange={(e) => set("horarioApertura", e.target.value)} />
+        </Campo>
+        <Campo label="Cierra a las">
+          <input className="sg-input" type="time" value={form.horarioCierre} onChange={(e) => set("horarioCierre", e.target.value)} />
+        </Campo>
+      </div>
+      <span className="cfg-label">Días que abre</span>
+      <div className="cfg-dias">
+        {DIAS_SEMANA.map((dia) => {
+          const on = form.diasLaborales.includes(dia);
+          return (
+            <button key={dia} className={`cfg-dia ${on ? "on" : ""}`} aria-pressed={on}
+              onClick={() => set("diasLaborales", on ? form.diasLaborales.filter((d) => d !== dia) : [...form.diasLaborales, dia])}>
+              {dia.slice(0, 3)}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+
+  const vistaTurnos = () => (
+    <>
+      <p className="cfg-intro">
+        Horas por defecto de cada tipo de turno de caja. Se usan al abrir un turno y en el calendario de turnos.
+      </p>
+      <div className="cfg-turnos">
+        {TURNOS.map(({ key, label }) => (
+          <div key={key} className="cfg-turno">
+            <strong>{label}</strong>
+            <div className="cfg-grid dos">
+              <Campo label="Inicio">
+                <input className="sg-input" type="time" value={form.turnos[key].horaInicio} onChange={(e) => setTurno(key, "horaInicio", e.target.value)} />
+              </Campo>
+              <Campo label="Fin">
+                <input className="sg-input" type="time" value={form.turnos[key].horaFin} onChange={(e) => setTurno(key, "horaFin", e.target.value)} />
+              </Campo>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="cfg-nota"><Info /> Los tres tipos de turno son fijos del sistema; aquí se ajustan sus horas.</p>
+    </>
+  );
+
+  const vistaAvisos = () => (
+    <div className="cfg-grid">
+      <Campo label="Plan por vencer" ayuda="Desde cuántos días antes del vencimiento el cliente aparece como «por vencer» en Clientes y en la Caja.">
+        <div className="cfg-numero">
+          <input className="sg-input" inputMode="numeric" value={form.notificaciones.diasAnticipacion}
+            onChange={(e) => setGrupo("notificaciones", "diasAnticipacion", soloNumero(e.target.value))} />
+          <span>días</span>
+        </div>
+      </Campo>
+      <Campo label="Poco inventario" ayuda="En la Caja, un producto se marca en naranja cuando quedan estas unidades o menos.">
+        <div className="cfg-numero">
+          <input className="sg-input" inputMode="numeric" value={form.notificaciones.stockMinimoGlobal}
+            onChange={(e) => setGrupo("notificaciones", "stockMinimoGlobal", soloNumero(e.target.value))} />
+          <span>unidades</span>
+        </div>
+      </Campo>
+    </div>
+  );
+
+  const vistas = {
+    general: vistaGeneral, planes: vistaPlanes, horario: vistaHorario, turnos: vistaTurnos,
+    avisos: vistaAvisos, respaldos: () => <RespaldosCard />, panel: () => <PanelWebCard />,
+  };
+  const actual = SECCIONES.find((s) => s.id === seccion);
+
+  return (
+    <div className="cfg">
+      <nav className="cfg-nav" aria-label="Secciones de configuración">
+        {SECCIONES.map((s) => (
+          <button key={s.id} className={`cfg-nav-item ${seccion === s.id ? "on" : ""}`} onClick={() => setSeccion(s.id)}>
+            <s.icon /> <span>{s.label}</span>
+            {s.id === "planes" && cambiosPlanes && <i className="cfg-punto" title="Cambios sin guardar" />}
+            {s.guarda && s.id !== "planes" && cambiosConfig && seccionCambiada(s.id, form, guardado) && <i className="cfg-punto" title="Cambios sin guardar" />}
+          </button>
+        ))}
+        {ultimaModificacion && <p className="cfg-modificado">Guardado el {ultimaModificacion}</p>}
+      </nav>
+
+      <section className="cfg-contenido">
+        <header className="cfg-titulo">
+          <actual.icon />
+          <h2>{actual.label}</h2>
+        </header>
+
+        {errores.length > 0 && (
+          <ul className="cfg-errores" role="alert">
+            {errores.map((e) => <li key={e}>{e}</li>)}
+          </ul>
+        )}
+
+        {vistas[seccion]()}
+      </section>
+
+      {(hayCambios || mensaje) && (
+        <div className={`cfg-barra ${mensaje?.tipo === "ok" && !hayCambios ? "ok" : ""}`} role="status">
+          {hayCambios ? (
+            <>
+              <span>{mensaje?.tipo === "error" ? mensaje.texto : "Tiene cambios sin guardar"}</span>
+              <button className="sg-btn sg-btn-ghost" onClick={descartar}><Undo2 /> Descartar</button>
+              <button className="sg-btn sg-btn-primary" onClick={guardar}><Save /> Guardar cambios</button>
+            </>
+          ) : (
+            <span><CheckCircle2 /> {mensaje.texto}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Qué sección tiene cambios (para marcarla con un punto en el menú) */
+function seccionCambiada(id, a, b) {
+  const campos = {
+    general: ["nombreGimnasio", "nit", "direccion", "telefono", "email"],
+    horario: ["horarioApertura", "horarioCierre", "diasLaborales"],
+    turnos: ["turnos"],
+    avisos: ["notificaciones"],
+  }[id] || [];
+  return campos.some((c) => JSON.stringify(a[c]) !== JSON.stringify(b[c]));
+}
+
+export { CONFIG_DEFAULT };

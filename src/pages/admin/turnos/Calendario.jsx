@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import Button from "../../../components/ui/Button";
-import { COP, formatDate } from "../../../utils/formatters";
+import { COP, formatDate, fechaLocalISO } from "../../../utils/formatters";
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
@@ -40,7 +40,7 @@ export default function Calendario({
         const { start } = obtenerSemana(semanaActual);
         const fecha = new Date(start);
         fecha.setDate(fecha.getDate() + diaIndex);
-        return fecha.toISOString().split('T')[0];
+        return fechaLocalISO(fecha);
     };
 
     const cambiarSemana = (direccion) => {

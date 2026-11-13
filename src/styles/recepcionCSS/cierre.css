@@ -634,3 +634,81 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
+/* ============================================================
+   Legibilidad (tamaños mayores y contraste)
+   Se aplica sobre los estilos de arriba sin cambiar la estructura.
+   ============================================================ */
+.cierre-wrap { font-size: 15px; color: var(--sg-ink, #0e1630); }
+
+/* Encabezado */
+.cierre-wrap .cierre-main-title { font-size: 24px; }
+.cierre-wrap .cierre-fecha,
+.cierre-wrap .cierre-turno { font-size: 14.5px !important; }
+.cierre-wrap .cierre-live-badge { font-size: 13.5px; }
+
+/* Tarjetas de totales */
+.cierre-wrap .cierre-metric-total {
+  /* antes dependía de variables que no existen aquí y el texto blanco no se veía */
+  background: var(--sg-gradient, linear-gradient(135deg, #6d5ef6 0%, #4f7bff 55%, #22c3ee 100%));
+  color: #fff;
+}
+.cierre-wrap .cierre-metric-total .cierre-metric-label,
+.cierre-wrap .cierre-metric-total .cierre-metric-sub { color: rgba(255, 255, 255, 0.85); }
+.cierre-wrap .cierre-metric-total .cierre-metric-val { color: #fff; }
+.cierre-wrap .cierre-metric-label { font-size: 14.5px; font-weight: 650; color: var(--sg-muted, #6b7591); }
+.cierre-wrap .cierre-metric-val { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+.cierre-wrap .cierre-metric-sub { font-size: 13.5px; color: var(--sg-muted, #6b7591); }
+
+/* Tarjetas y pestañas */
+.cierre-wrap .cierre-card-title { font-size: 18px; font-weight: 750; }
+.cierre-wrap .cierre-card-tabs button,
+.cierre-wrap .cierre-tab { font-size: 15px; font-weight: 650; padding: 9px 16px; }
+.cierre-wrap .cierre-card-count { font-size: 14px; }
+.cierre-wrap .cierre-empty { font-size: 15.5px; color: var(--sg-muted, #6b7591); }
+
+/* Transacciones */
+.cierre-wrap .cierre-tx-row { padding-top: 12px; padding-bottom: 12px; }
+.cierre-wrap .cierre-tx-hora { font-size: 14px; font-weight: 650; color: var(--sg-muted, #6b7591); }
+.cierre-wrap .cierre-tx-nombre { font-size: 15.5px; font-weight: 650; }
+.cierre-wrap .cierre-tx-cliente { font-size: 13.5px; }
+.cierre-wrap .cierre-tx-metodo { font-size: 15px; }
+.cierre-wrap .cierre-tx-monto { font-size: 16px; font-weight: 750; }
+.cierre-wrap .cierre-tag { font-size: 12.5px; padding: 3px 9px; }
+
+/* Ventas por hora */
+.cierre-wrap .cierre-hora-val { font-size: 12px; font-weight: 650; }
+.cierre-wrap .cierre-hora-label { font-size: 12.5px; }
+
+/* Distribución */
+.cierre-wrap .cierre-dist-label { font-size: 15.5px; font-weight: 600; }
+.cierre-wrap .cierre-dist-pct { font-size: 20px; font-weight: 800; }
+.cierre-wrap .cierre-dist-monto { font-size: 15px; font-weight: 650; color: var(--sg-ink-2, #334063); }
+.cierre-wrap .cierre-dist-bar-bg { height: 8px; border-radius: 999px; }
+.cierre-wrap .cierre-dist-bar { height: 100%; border-radius: 999px; }
+.cierre-wrap .cierre-metodo-icon { font-size: 22px; }
+.cierre-wrap .cierre-metodo-label { font-size: 15.5px; font-weight: 600; }
+.cierre-wrap .cierre-metodo-val { font-size: 19px; font-weight: 800; }
+
+/* Cuadre de caja */
+.cierre-wrap .cierre-cuadre-body,
+.cierre-wrap .cierre-cuadre-body p { font-size: 15px; line-height: 1.55; }
+.cierre-wrap .cierre-esperado-row { font-size: 15px; }
+.cierre-wrap .cierre-esperado-total span { font-size: 18px; font-weight: 800; }
+.cierre-wrap .cierre-field { font-size: 14.5px; font-weight: 650; color: var(--sg-ink-2, #334063); }
+.cierre-wrap .cierre-field input { font-size: 17px; font-weight: 650; min-height: 46px; padding: 10px 14px; }
+.cierre-wrap .cierre-resultado-icon { font-size: 24px; }
+.cierre-wrap .cierre-resultado-texto { font-size: 16px; font-weight: 650; }
+.cierre-wrap .cierre-resultado-diff { font-size: 22px; font-weight: 800; }
+.cierre-wrap .cierre-btn-final,
+.cierre-wrap .btn { font-size: 16px; font-weight: 750; min-height: 48px; }
+.cierre-wrap .cierre-aviso-faltante { font-size: 15px; line-height: 1.5; }
+
+/* Jornada cerrada */
+.cierre-closed-title { font-size: 26px !important; }
+.cierre-closed-sub { font-size: 15px !important; }
+.cierre-closed-label { font-size: 14.5px !important; }
+.cierre-closed-val { font-size: 24px !important; font-weight: 800; }
+
+/* Confirmación de cierre */
+.modal-confirm .modal-titulo { font-size: 20px; }
+.modal-confirm .modal-confirm-texto { font-size: 15.5px; line-height: 1.55; }

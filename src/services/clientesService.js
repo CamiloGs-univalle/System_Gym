@@ -1,15 +1,26 @@
 import api from './api';
+import { fechaLocalISO } from '../utils/formatters';
+import { diasAvisoVencimiento } from '../utils/configuracion';
+
+/** Días de acceso que le quedan (hoy incluido) hasta la fecha de vencimiento AAAA-MM-DD. */
+const diasDeAcceso = (vencimiento) => {
+  const [y1, m1, d1] = fechaLocalISO().split('-').map(Number);
+  const [y2, m2, d2] = String(vencimiento).slice(0, 10).split('-').map(Number);
+  if (!y2 || !m2 || !d2) return 0;
+  const dias = Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000) + 1;
+  return Math.max(0, dias);
+};
 
 const toFrontendFormat = (data) => {
   if (!data) return null;
   const mem = data.currentMembership || data.current_membership || null;
-  const hoy = new Date();
   let diasRestantes = 0;
   let estadoMembresia = 'NINGUNA';
   if (mem?.expirationDate || mem?.expiration_date) {
-    const exp = new Date(mem.expirationDate || mem.expiration_date);
-    diasRestantes = Math.max(0, Math.ceil((exp - hoy) / 86400000));
-    if (diasRestantes > 5) estadoMembresia = 'ACTIVA';
+    // La fecha de vencimiento es el último día con acceso (incluido).
+    // Se compara por fecha local, no por hora UTC, para coincidir con el backend.
+    diasRestantes = diasDeAcceso(mem.expirationDate || mem.expiration_date);
+    if (diasRestantes > diasAvisoVencimiento()) estadoMembresia = 'ACTIVA';
     else if (diasRestantes > 0) estadoMembresia = 'POR_VENCER';
     else estadoMembresia = 'VENCIDA';
   }
@@ -25,6 +36,7 @@ const toFrontendFormat = (data) => {
     entrenador: data.assignedTrainerName || data.entrenador || 'No asignado',
     notas: data.notes || data.notas || '',
     activo: data.active !== false,
+    fotoVersion: data.photoUpdatedAt || null,
     membresia: mem ? {
       tipo: mem.type || mem.tipo || '',
       fechaInicio: mem.startDate || mem.fecha_inicio || '',
@@ -45,6 +57,7 @@ export const mapMembresia = (tipo) => {
     semestral: 'SEMIANNUAL', semiannual: 'SEMIANNUAL',
     anual: 'ANNUAL', annual: 'ANNUAL',
     diario: 'DAILY', daily: 'DAILY', dia: 'DAILY', 'día': 'DAILY',
+    DAILY: 'DAILY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', SEMIANNUAL: 'SEMIANNUAL', ANNUAL: 'ANNUAL',
   };
   const texto = String(tipo || '').toLowerCase().trim();
   if (map[texto]) return map[texto];
@@ -52,6 +65,20 @@ export const mapMembresia = (tipo) => {
   const dias = parseInt(texto, 10);
   const porDias = { 1: 'DAILY', 30: 'MONTHLY', 90: 'QUARTERLY', 180: 'SEMIANNUAL', 365: 'ANNUAL' };
   return porDias[dias] || 'MONTHLY';
+};
+
+/**
+ * Tipo de membresía del backend según el plan (nombre o duración en días).
+ * Se usa al cobrar un plan en caja para que el vencimiento coincida con el plan.
+ */
+export const tipoMembresiaDePlan = (plan) => {
+  const nombre = String(plan?.nombre || '').toLowerCase();
+  const dias = Number(plan?.duracion) || 30;
+  if (nombre.includes('diario') || nombre.includes('día') || nombre.includes('dia ') || dias === 1) return 'DAILY';
+  if (nombre.includes('anual') || dias >= 365) return 'ANNUAL';
+  if (nombre.includes('semestr') || dias >= 180) return 'SEMIANNUAL';
+  if (nombre.includes('trimestr') || dias >= 90) return 'QUARTERLY';
+  return 'MONTHLY';
 };
 
 const toBackendFormat = (data) => {

@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import KpiCard from "../../components/admin/KpiCard";
 import ActivityFeed from "../../components/admin/ActivityFeed";
 import QuickActions from "../../components/admin/QuickActions";
-import UsuariosPanel from "./UsuariosPanel";
+import ClientesPanel from "../clients/ClientesPanel";
 import ProductosPanel from "../products/productos";
 import IngresoPanel from "../ingreso/IngresoPanel";
 import "../../styles/ingresoCSS/ingreso.css";
@@ -30,31 +30,57 @@ import { ventasService } from "../../services/ventasService";
 import { productosService } from "../../services/productosService";
 import { ingresoService } from "../../services/ingresoService";
 import "../../styles/adminCSS/index.css";
+import AppShell from "../../components/layout/AppShell";
+import IngresoClientes from "../acceso/IngresoClientes";
+import FotoCliente from "../../components/clientes/FotoCliente";
+import accesoService from "../../services/accesoService";
+import "./admin-home.css";
+import {
+    LayoutDashboard, Users, ScanLine, ClipboardList, CreditCard, Wallet, UserCog, Banknote,
+    Package, PackagePlus, LineChart, Clock3, FileBarChart, Settings, UserPlus, TrendingUp,
+    AlertTriangle, CircleDollarSign, Fingerprint, ArrowRight,
+} from "lucide-react";
 
 // Utilidades
-const hoy = new Date().toISOString().split("T")[0];
+// Fecha de hoy calculada en cada uso (la app puede quedar abierta pasada la medianoche)
+const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 const calcularDiasRestantes = (fechaVencimiento) => {
     if (!fechaVencimiento) return -999;
-    return calculateDaysBetween(new Date().toISOString().split("T")[0], fechaVencimiento);
+    return calculateDaysBetween(hoyISO(), fechaVencimiento);
 };
 
 // Tabs del sistema
-const tabs = [
-    { id: "dashboard", label: "Dashboard", icon: "📊" },
-    { id: "usuarios", label: "Clientes", icon: "👥" },
-    { id: "planes", label: "Planes", icon: "📋" },
-    { id: "pagos", label: "Pagos", icon: "💰" },
-    { id: "cartera", label: "Cartera", icon: "📈" },
-    { id: "empleados", label: "Empleados", icon: "👷" },
-    { id: "nomina", label: "Nomina", icon: "📝" },
-    { id: "productos", label: "Inventario", icon: "📦" },
-    { id: "ingreso", label: "Ingreso Producto", icon: "📥" },
-    { id: "finanzas", label: "Finanzas", icon: "💵" },
-    { id: "turnos", label: "Turnos", icon: "🕐" },
-    { id: "reportes", label: "Reportes", icon: "📋" },
-    { id: "configuracion", label: "Configuracion", icon: "⚙️" },
+const SECCIONES = [
+    { titulo: "General", items: [
+        { id: "dashboard", label: "Inicio", icon: LayoutDashboard },
+        { id: "acceso", label: "Ingresos", icon: ScanLine },
+        { id: "usuarios", label: "Clientes", icon: Users },
+    ] },
+    { titulo: "Ventas", items: [
+        { id: "planes", label: "Planes", icon: ClipboardList },
+        { id: "pagos", label: "Pagos", icon: CreditCard },
+        { id: "cartera", label: "Cartera", icon: Wallet },
+        { id: "productos", label: "Inventario", icon: Package },
+        { id: "ingreso", label: "Entrada de mercancía", icon: PackagePlus },
+    ] },
+    { titulo: "Equipo", items: [
+        { id: "empleados", label: "Empleados", icon: UserCog },
+        { id: "nomina", label: "Nómina", icon: Banknote },
+        { id: "turnos", label: "Turnos", icon: Clock3 },
+    ] },
+    { titulo: "Negocio", items: [
+        { id: "finanzas", label: "Finanzas", icon: LineChart },
+        { id: "reportes", label: "Reportes", icon: FileBarChart },
+        { id: "configuracion", label: "Configuración", icon: Settings },
+    ] },
 ];
+
+const TITULOS = Object.fromEntries(SECCIONES.flatMap((s) => s.items.map((i) => [i.id, i.label])));
+
 
 export default function AdminDashboard() {
     const [tabActiva, setTabActiva] = useState("dashboard");
@@ -122,7 +148,7 @@ export default function AdminDashboard() {
                 }
                 
                 // Cargar finanzas del mes desde el backend
-                const mesActual = hoy.slice(0, 7);
+                const mesActual = hoyISO().slice(0, 7);
                 let ventasMes = [];
                 try {
                     const ventasResp = await ventasService.ventasHoy();
@@ -175,29 +201,26 @@ export default function AdminDashboard() {
         cargarDatos();
     }, [isAuthenticated]);
 
-    // Generar actividad en tiempo real (simulado)
+    // Ingresos reales de hoy (huella / cédula)
     useEffect(() => {
-        const actividades = [
-            { icon: "👤", text: "Juan Pérez renovó membresía mensual", timestamp: new Date(Date.now() - 7200000), color: "#10b981" },
-            { icon: "💊", text: "Se vendió Proteína Whey 2lb x2", timestamp: new Date(Date.now() - 10800000), color: "#3b82f6" },
-            { icon: "⚠️", text: "Mateo López vence en 10 días", timestamp: new Date(), color: "#f59e0b" },
-            { icon: "🕐", text: "Turno de Paula Jiménez cerrado correctamente", timestamp: new Date(Date.now() - 18000000), color: "#10b981" },
-            { icon: "📦", text: "Stock bajo: Creatina Monohidratada 300g (3 uds)", timestamp: new Date(Date.now() - 86400000), color: "#ef4444" },
-        ];
-        setLastActivity(actividades);
+        let vivo = true;
+        const cargar = () => accesoService.delDia().then((r) => vivo && setLastActivity(r));
+        cargar();
+        const t = setInterval(cargar, 60000);
+        return () => { vivo = false; clearInterval(t); };
     }, []);
 
     // Stats para KPIs
     const { clientes, empleados, turnos, ventasMes, egresosMes, productos } = datosDashboard;
 
     const clientesActivos = useMemo(() =>
-        clientes?.filter(c => c.activo && c.membresia?.estado === "ACTIVA").length || 0,
+        clientes?.filter(c => c.activo && calcularDiasRestantes(c.membresia?.fechaVencimiento) >= 0).length || 0,
         [clientes]);
 
     const clientesVencidos = useMemo(() =>
         clientes?.filter(c => {
             const dias = calcularDiasRestantes(c.membresia?.fechaVencimiento);
-            return dias < 0 && c.activo;
+            return c.membresia?.fechaVencimiento && dias < 0 && c.activo;
         }).length || 0,
         [clientes]);
 
@@ -209,7 +232,7 @@ export default function AdminDashboard() {
     }, [clientes]);
 
     const ingresoMes = useMemo(() => {
-        const mesActual = hoy.slice(0, 7);
+        const mesActual = hoyISO().slice(0, 7);
         const totalVentasMes = ventasMes
             ?.filter(v => (v.transactionDate || v.fecha || v.createdAt || "").startsWith(mesActual))
             ?.reduce((a, v) => a + (v.totalAmount || v.total || v.monto || 0), 0) || 0;
@@ -218,18 +241,18 @@ export default function AdminDashboard() {
 
     const ingresoHoy = useMemo(() => {
         return ventasMes
-            ?.filter(v => (v.transactionDate || v.fecha || v.createdAt || "").startsWith(hoy))
+            ?.filter(v => (v.transactionDate || v.fecha || v.createdAt || "").startsWith(hoyISO()))
             ?.reduce((a, v) => a + (v.totalAmount || v.total || v.monto || 0), 0) || 0;
     }, [ventasMes]);
 
     const egresoMes = useMemo(() => {
-        const mesActual = hoy.slice(0, 7);
+        const mesActual = hoyISO().slice(0, 7);
         return egresosMes
             ?.filter(e => (e.fecha || e.date || e.createdAt || "").startsWith(mesActual))
             ?.reduce((a, e) => a + (e.monto || e.total || e.amount || 0), 0) || 0;
     }, [egresosMes]);
 
-    const turnoAbierto = turnos?.find(t => t.fecha === hoy && !t.cerrado);
+    const turnoAbierto = turnos?.find(t => t.fecha === hoyISO() && !t.cerrado);
     const totalEmpleados = empleados?.filter(e => e.activo).length || 0;
 
     // KPIs del dashboard
@@ -323,7 +346,7 @@ export default function AdminDashboard() {
         return clientes
             ?.filter(c => {
                 const dias = calcularDiasRestantes(c.membresia?.fechaVencimiento);
-                return dias >= 0 && dias <= 5 && c.activo && c.membresia?.estado === "ACTIVA";
+                return dias >= 0 && dias <= 5 && c.activo;
             })
             ?.sort((a, b) =>
                 calcularDiasRestantes(a.membresia?.fechaVencimiento) -
@@ -387,68 +410,134 @@ export default function AdminDashboard() {
         switch (tabActiva) {
             case "dashboard":
                 return (
-                    <div className="dashboard-content">
-                        <div className="kpis-grid">
-                            {kpis.map((k, i) => (
-                                <KpiCard key={i} {...k} />
-                            ))}
-                        </div>
+                    <div className="ah">
+                        <section className="ah-hero">
+                            <div>
+                                <span className="ah-eyebrow">Resumen de hoy</span>
+                                <h2>{COP(ingresoHoy)} <small>en ventas y membresías</small></h2>
+                                <p>
+                                    {clientesActivos} clientes con plan vigente · {clientesPorVencer} por vencer en 3 días ·{" "}
+                                    {new Set(lastActivity.filter((l) => l.granted).map((l) => l.clientId)).size} personas han entrado hoy
+                                </p>
+                            </div>
+                            <div className="ah-hero-actions">
+                                <button className="sg-btn sg-btn-lg ah-btn-lime" onClick={() => setTabActiva("acceso")}>
+                                    <Fingerprint /> Registrar ingreso
+                                </button>
+                                <button className="sg-btn sg-btn-lg ah-btn-glass" onClick={() => setTabActiva("usuarios")}>
+                                    <UserPlus /> Nuevo cliente
+                                </button>
+                            </div>
+                        </section>
 
-                        <div className="dashboard-grid">
-                            <div className="dashboard-card">
-                                <div className="card-header">
-                                    <h3>🕐 Actividad Reciente</h3>
-                                    <span className="card-badge">{lastActivity.length} eventos</span>
+                        <section className="ah-stats">
+                            <Stat icon={Users} tono="violet" valor={clientesActivos} label="Clientes activos" nota={`${clientes?.length || 0} registrados`} onClick={() => setTabActiva("usuarios")} />
+                            <Stat icon={AlertTriangle} tono="amber" valor={clientesPorVencer} label="Por vencer" nota="En los próximos 3 días" onClick={() => setTabActiva("usuarios")} />
+                            <Stat icon={CircleDollarSign} tono="red" valor={clientesVencidos} label="Vencidos" nota="Para llamar y renovar" onClick={() => setTabActiva("usuarios")} />
+                            <Stat icon={TrendingUp} tono="green" valor={COP(ingresoMes)} label="Ventas del mes" nota={`Egresos del mes ${COP(egresoMes)}`} onClick={() => setTabActiva("finanzas")} />
+                            <Stat icon={UserCog} tono="cyan" valor={totalEmpleados} label="Empleados activos" nota={`${empleados?.filter(e => e.activo && e.cargo === "Entrenador").length || 0} entrenadores`} onClick={() => setTabActiva("empleados")} />
+                            <Stat icon={Package} tono="pink" valor={productos?.length || 0} label="Productos" nota={`${productos?.filter(p => (p.stock ?? 0) <= (p.minimumStock ?? 0)).length || 0} con stock bajo`} onClick={() => setTabActiva("productos")} />
+                        </section>
+
+                        <section className="ah-grid">
+                            <div className="sg-card">
+                                <div className="ah-card-head">
+                                    <div>
+                                        <h3 className="sg-card-title">Ingresos de hoy</h3>
+                                        <p className="sg-card-sub">Quién ha entrado al gimnasio</p>
+                                    </div>
+                                    <button className="sg-btn sg-btn-soft sg-btn-sm" onClick={() => setTabActiva("acceso")}>Ver todo <ArrowRight /></button>
                                 </div>
-                                <ActivityFeed activities={lastActivity} />
+                                {lastActivity.length === 0 ? (
+                                    <div className="sg-empty"><ScanLine /><span>Aún no hay ingresos registrados hoy.</span></div>
+                                ) : (
+                                    <div className="ah-feed">
+                                        {lastActivity.slice(0, 7).map((l) => (
+                                            <div key={l.id} className="ah-feed-item">
+                                                <FotoCliente id={l.clientId} nombre={l.clientName || "?"} size={38} />
+                                                <div className="ah-feed-text">
+                                                    <strong>{l.clientName || "No identificado"}</strong>
+                                                    <span>{l.granted ? "Entró" : "Ingreso negado"} · {l.method === "FINGERPRINT" ? "huella" : l.method === "DNI" ? "cédula" : "manual"}</span>
+                                                </div>
+                                                <span className={`sg-badge ${l.granted ? "sg-badge-success" : "sg-badge-danger"}`}>
+                                                    {new Date(l.accessedAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="dashboard-card">
-                                <div className="card-header">
-                                    <h3>⚡ Acciones Rápidas</h3>
+                            <div className="sg-card">
+                                <div className="ah-card-head">
+                                    <div>
+                                        <h3 className="sg-card-title">Próximos a vencer</h3>
+                                        <p className="sg-card-sub">Llámelos antes de que se les venza el plan</p>
+                                    </div>
+                                    <span className="sg-badge sg-badge-warning sg-badge-plain">{clientesPorVencerLista.length}</span>
                                 </div>
-                                <QuickActions actions={quickActions} />
-                            </div>
-
-                            <div className="dashboard-card">
-                                <div className="card-header">
-                                    <h3>⚠️ Próximos a Vencer</h3>
-                                    <span className="card-badge">{clientesPorVencerLista.length}</span>
-                                </div>
-                                <div className="expiring-list">
-                                    {clientesPorVencerLista.length === 0 ? (
-                                        <div className="empty-state">
-                                            <span>✅</span>
-                                            <p>Sin membresías próximas a vencer</p>
-                                        </div>
-                                    ) : (
-                                        clientesPorVencerLista.slice(0, 5).map(c => {
+                                {clientesPorVencerLista.length === 0 ? (
+                                    <div className="sg-empty"><Users /><span>Nadie vence en los próximos 5 días.</span></div>
+                                ) : (
+                                    <div className="ah-feed">
+                                        {clientesPorVencerLista.slice(0, 6).map(c => {
                                             const dias = calcularDiasRestantes(c.membresia?.fechaVencimiento);
                                             return (
-                                                <div key={c.id} className="expiring-item">
-                                                    <span className="expiring-name">{c.nombre}</span>
-                                                    <span className={`expiring-badge ${dias <= 1 ? "badge-red" : dias <= 3 ? "badge-yellow" : "badge-blue"}`}>
-                                                        {dias === 0 ? "🔥 Hoy" : dias === 1 ? "Mañana" : `${dias} días`}
+                                                <div key={c.id} className="ah-feed-item">
+                                                    <FotoCliente id={c.id} nombre={c.nombre} version={c.fotoVersion} size={38} />
+                                                    <div className="ah-feed-text">
+                                                        <strong>{c.nombre}</strong>
+                                                        <span>{c.telefono || "Sin teléfono"}</span>
+                                                    </div>
+                                                    <span className={`sg-badge ${dias <= 1 ? "sg-badge-danger" : "sg-badge-warning"}`}>
+                                                        {dias === 0 ? "Vence hoy" : dias === 1 ? "Mañana" : `${dias} días`}
                                                     </span>
                                                 </div>
                                             );
-                                        })
-                                    )}
-                                    {clientesPorVencerLista.length > 5 && (
-                                        <button
-                                            className="expiring-ver-mas"
-                                            onClick={() => setTabActiva("usuarios")}
-                                        >
-                                            Ver todos ({clientesPorVencerLista.length})
+                                        })}
+                                    </div>
+                                )}
+                                {clientesPorVencerLista.length > 6 && (
+                                    <button className="sg-btn sg-btn-ghost sg-btn-sm" style={{ marginTop: 12 }} onClick={() => setTabActiva("usuarios")}>
+                                        Ver los {clientesPorVencerLista.length}
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="sg-card">
+                                <div className="ah-card-head">
+                                    <div>
+                                        <h3 className="sg-card-title">Accesos rápidos</h3>
+                                        <p className="sg-card-sub">Lo que más se usa</p>
+                                    </div>
+                                </div>
+                                <div className="ah-quick">
+                                    {[
+                                        { icon: UserPlus, label: "Nuevo cliente", id: "usuarios" },
+                                        { icon: Banknote, label: "Pagar nómina", id: "nomina" },
+                                        { icon: Clock3, label: "Turnos", id: "turnos" },
+                                        { icon: Package, label: "Inventario", id: "productos" },
+                                        { icon: LineChart, label: "Finanzas", id: "finanzas" },
+                                        { icon: FileBarChart, label: "Reportes", id: "reportes" },
+                                    ].map((q) => (
+                                        <button key={q.id + q.label} className="ah-quick-btn" onClick={() => setTabActiva(q.id)}>
+                                            <q.icon />
+                                            <span>{q.label}</span>
                                         </button>
-                                    )}
+                                    ))}
+                                </div>
+                                <div className={`ah-turno ${turnoAbierto ? "ok" : ""}`}>
+                                    <Clock3 />
+                                    <span>{turnoAbierto ? "Hay un turno de caja abierto hoy" : "No hay turno de caja abierto hoy"}</span>
                                 </div>
                             </div>
-                        </div>
+                        </section>
                     </div>
                 );
+            case "acceso":
+                return <IngresoClientes />;
             case "usuarios":
-                return <UsuariosPanel />;
+                return <ClientesPanel />;
             case "planes":
                 return <PlanesPanel />;
             case "pagos":
@@ -477,63 +566,33 @@ export default function AdminDashboard() {
     };
 
     return (
-        <div className="exec-dashboard">
-            <header className="exec-header">
-                <div className="exec-header-left">
-                    <h1 className="exec-title">🏢 Panel de Control</h1>
-                    <p className="exec-subtitle">
-                        Vista ejecutiva • {formatDate(hoy)}
-                    </p>
-                </div>
-                <div className="exec-header-right">
-                    <div className="exec-user">
-                        <span className="exec-user-avatar">👤</span>
-                        <div className="exec-user-info">
-                            <span className="exec-user-name">
-                                {usuario?.fullName || usuario?.nombre || usuario?.username || "Administrador"}
-                            </span>
-                            <span className="exec-user-role">
-                                {usuario?.role || "Administrador"}
-                            </span>
-                        </div>
-                    </div>
-                    <span className="exec-badge">
-                        <span className="exec-badge-dot"></span>
-                        Sistema en vivo
-                    </span>
-                    <button
-                        onClick={() => setConfirmLogout(true)}
-                        className="exec-logout-btn"
-                        title="Cerrar sesión"
-                    >
-                        <span className="exec-logout-icon">🚪</span>
-                        <span className="exec-logout-text">Salir</span>
-                    </button>
-                </div>
-            </header>
-
-            <nav className="exec-tabs">
-                {tabs.map(tab => (
-                    <button
-                        key={tab.id}
-                        className={`exec-tab ${tabActiva === tab.id ? "active" : ""}`}
-                        onClick={() => setTabActiva(tab.id)}
-                    >
-                        <span className="exec-tab-icon">{tab.icon}</span>
-                        <span className="exec-tab-label">{tab.label}</span>
-                    </button>
-                ))}
-            </nav>
-
-            <main className="exec-content">
-                {renderContent()}
-            </main>
+        <>
+            <AppShell
+                secciones={SECCIONES}
+                activo={tabActiva}
+                onCambiar={setTabActiva}
+                titulo={tabActiva === "dashboard" ? `Hola, ${(usuario?.fullName || usuario?.username || "").split(" ")[0]}` : TITULOS[tabActiva]}
+                onSalir={() => setConfirmLogout(true)}
+            >
+                <div className="sg-legacy">{renderContent()}</div>
+            </AppShell>
 
             <LogoutConfirmModal
                 open={confirmLogout}
                 onConfirm={() => { setConfirmLogout(false); handleLogout(); }}
                 onCancel={() => setConfirmLogout(false)}
             />
-        </div>
+        </>
+    );
+}
+
+function Stat({ icon: Icon, tono, valor, label, nota, onClick }) {
+    return (
+        <button className={`sg-stat clickable ah-stat ah-${tono}`} onClick={onClick}>
+            <div className="sg-stat-icon"><Icon /></div>
+            <div className="sg-stat-value">{valor}</div>
+            <div className="sg-stat-label">{label}</div>
+            <div className="sg-stat-note">{nota}</div>
+        </button>
     );
 }

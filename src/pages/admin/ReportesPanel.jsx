@@ -10,7 +10,7 @@ import { datosEmpresa } from "../../utils/empresa";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-import { COP, formatDate } from "../../utils/formatters";
+import { COP, formatDate, fechaLocalISO } from "../../utils/formatters";
 import useAuthStore from "../../store/authStore";
 
 // ============================================================
@@ -176,8 +176,8 @@ export default function ReportesPanel() {
     const hoy = useMemo(() => new Date(), []);
     const primerDiaMes = useMemo(() => new Date(hoy.getFullYear(), hoy.getMonth(), 1), [hoy]);
 
-    const [fechaInicio, setFechaInicio] = useState(primerDiaMes.toISOString().split("T")[0]);
-    const [fechaFin, setFechaFin] = useState(hoy.toISOString().split("T")[0]);
+    const [fechaInicio, setFechaInicio] = useState(fechaLocalISO(primerDiaMes));
+    const [fechaFin, setFechaFin] = useState(fechaLocalISO(hoy));
 
     // Datos del backend
     const [clientes, setClientes] = useState([]);
@@ -215,7 +215,7 @@ export default function ReportesPanel() {
     // FUNCIONES DE AYUDA
     // ============================================================
 
-    const toISODate = (d) => d.toISOString().split("T")[0];
+    const toISODate = (d) => fechaLocalISO(d);
     const sumarDias = (fecha, dias) => {
         const d = new Date(fecha + "T00:00:00");
         d.setDate(d.getDate() + dias);
@@ -232,7 +232,11 @@ export default function ReportesPanel() {
     const fechaDeItem = (item) => {
         const raw = item.createdAt || item.openedAt || item.fecha || item.date;
         if (!raw) return null;
-        try { return new Date(raw).toISOString().split("T")[0]; } catch { return null; }
+        try {
+            // El backend envía fecha y hora local (sin zona): se toma la fecha tal cual
+            if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+            return fechaLocalISO(new Date(raw));
+        } catch { return null; }
     };
 
     // ============================================================
@@ -627,7 +631,7 @@ export default function ReportesPanel() {
                 });
             }
 
-            doc.save(`reporte_${new Date().toISOString().split("T")[0]}.pdf`);
+            doc.save(`reporte_${fechaLocalISO()}.pdf`);
             alert("✅ PDF generado");
         } catch (err) {
             console.error(err);
@@ -679,7 +683,7 @@ export default function ReportesPanel() {
             }));
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(h5), "Inventario");
 
-            XLSX.writeFile(wb, `reporte_${new Date().toISOString().split("T")[0]}.xlsx`);
+            XLSX.writeFile(wb, `reporte_${fechaLocalISO()}.xlsx`);
             alert("✅ Excel generado");
         } catch (err) {
             console.error(err);
@@ -703,7 +707,7 @@ export default function ReportesPanel() {
             const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `reporte_${new Date().toISOString().split("T")[0]}.csv`;
+            link.download = `reporte_${fechaLocalISO()}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -1046,7 +1050,7 @@ export default function ReportesPanel() {
     }
 
     return (
-        <div style={{ padding: "20px", maxHeight: "calc(100vh - 80px)", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "16px", paddingBottom: "12px", borderBottom: "2px solid #e5e7eb" }}>
                 <div>
@@ -1065,7 +1069,7 @@ export default function ReportesPanel() {
                         </button>
                     ))}
                     <input type="date" value={fechaInicio} max={fechaFin} onChange={e => setFechaInicio(e.target.value)} style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #e5e7eb", fontSize: "12px" }} />
-                    <input type="date" value={fechaFin} min={fechaInicio} max={new Date().toISOString().split("T")[0]} onChange={e => setFechaFin(e.target.value)} style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #e5e7eb", fontSize: "12px" }} />
+                    <input type="date" value={fechaFin} min={fechaInicio} max={fechaLocalISO()} onChange={e => setFechaFin(e.target.value)} style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #e5e7eb", fontSize: "12px" }} />
                     <Button variant="primary" onClick={exportarPDF} disabled={generando} style={{ fontSize: "12px", padding: "6px 12px" }}>📄 PDF</Button>
                     <Button variant="success" onClick={exportarExcel} disabled={generando} style={{ fontSize: "12px", padding: "6px 12px" }}>📊 Excel</Button>
                     <Button variant="secondary" onClick={exportarCSV} disabled={generando} style={{ fontSize: "12px", padding: "6px 12px" }}>📋 CSV</Button>

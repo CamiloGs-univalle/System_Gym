@@ -1,0 +1,9 @@
+{
+  "name": "System Gym · Panel",
+  "short_name": "Mi gimnasio",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f5fb",
+  "theme_color": "#0b1220",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

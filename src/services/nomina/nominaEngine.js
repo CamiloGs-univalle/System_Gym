@@ -1,4 +1,5 @@
 import { guardarSincronizado } from '../storageSync';
+import { fechaLocalISO } from "../../utils/formatters";
 // ============================================================
 // MOTOR DE NÓMINA COLOMBIANA 2026
 // Parametrizable por fecha (cambios legislativos)
@@ -121,7 +122,7 @@ const TABLA_ARL = [
 // FUNCIÓN PRINCIPAL: OBTENER PARÁMETRO VIGENTE
 // ============================================================
 export function obtenerParametro(codigo, fecha) {
-  const fechaEval = fecha || new Date().toISOString().split('T')[0];
+  const fechaEval = fecha || fechaLocalISO();
   const params = PARAMETROS
     .filter(p => p.codigo === codigo && p.vigenciaDesde <= fechaEval)
     .filter(p => !p.vigenciaHasta || p.vigenciaHasta >= fechaEval)
@@ -312,7 +313,7 @@ export function calcularRetencionFuente(baseGravableMensual, deduccionesLey, fec
 //   deducciones, aportes ni prestaciones (el contratista cotiza por su cuenta).
 // ============================================================
 export function liquidarNominaIndividual(empleado, novedades = {}, fecha = null, opciones = {}) {
-  const fechaLiq = fecha || opciones.periodo?.hasta || new Date().toISOString().split('T')[0];
+  const fechaLiq = fecha || opciones.periodo?.hasta || fechaLocalISO();
   const dias = Math.max(0, Math.min(30, opciones.periodo?.dias ?? 30));
   const fraccion = dias / 30;
   const esContratista = empleado.tipoVinculacion === 'PRESTACION_SERVICIOS';
@@ -429,7 +430,7 @@ export function liquidarNominaMensual(empleados, novedadesPorEmpleado = {}, fech
   });
 
   return {
-    fechaLiquidacion: fecha || new Date().toISOString().split('T')[0],
+    fechaLiquidacion: fecha || fechaLocalISO(),
     totalEmpleados: resultados.length,
     totalDevengados: resultados.reduce((s, r) => s + r.devengados.total, 0),
     totalDeducciones: resultados.reduce((s, r) => s + r.deducciones.total, 0),
@@ -587,6 +588,43 @@ export function proximoPeriodo(empleado, config = leerConfigNomina()) {
 // ============================================================
 // HISTORIAL / PAGOS
 // ============================================================
+/**
+ * Conceptos del pago para el desprendible: lo que se le paga y lo que se le
+ * descuenta al empleado (sin aportes del empleador ni prestaciones).
+ */
+export function detalleDesprendible(resultado) {
+  if (!resultado?.devengados) return null;
+  const d = resultado.devengados;
+  const dias = resultado.periodo?.dias ?? 30;
+  const esContratista = resultado.tipoVinculacion === 'PRESTACION_SERVICIOS';
+  const horas = (n) => `${n} h`;
+  const devengados = [
+    { concepto: `${esContratista ? 'Honorarios' : 'Salario básico'} (${dias} días)`, valor: d.salarioBase },
+    d.horasExtrasDiurnas?.valor > 0 && { concepto: `Horas extra diurnas (${horas(d.horasExtrasDiurnas.cantidad)})`, valor: d.horasExtrasDiurnas.valor },
+    d.horasExtrasNocturnas?.valor > 0 && { concepto: `Horas extra nocturnas (${horas(d.horasExtrasNocturnas.cantidad)})`, valor: d.horasExtrasNocturnas.valor },
+    d.recargoNocturno?.valor > 0 && { concepto: `Recargo nocturno (${horas(d.recargoNocturno.cantidad)})`, valor: d.recargoNocturno.valor },
+    d.dominicales?.valor > 0 && { concepto: `Horas dominicales (${horas(d.dominicales.cantidad)})`, valor: d.dominicales.valor },
+    d.festivos?.valor > 0 && { concepto: `Horas festivas (${horas(d.festivos.cantidad)})`, valor: d.festivos.valor },
+    d.bonificaciones > 0 && { concepto: 'Bonificaciones', valor: d.bonificaciones },
+    d.comisiones > 0 && { concepto: 'Comisiones', valor: d.comisiones },
+    d.auxilioTransporte > 0 && { concepto: 'Auxilio de transporte', valor: d.auxilioTransporte },
+  ].filter(Boolean);
+  const x = resultado.deducciones || {};
+  const deducciones = [
+    x.salud > 0 && { concepto: 'Salud (4%)', valor: Math.round(x.salud) },
+    x.pension > 0 && { concepto: 'Pensión (4%)', valor: Math.round(x.pension) },
+    x.retencionFuente > 0 && { concepto: 'Retención en la fuente', valor: Math.round(x.retencionFuente) },
+    x.voluntarias > 0 && { concepto: 'Deducciones voluntarias', valor: Math.round(x.voluntarias) },
+  ].filter(Boolean);
+  return {
+    devengados,
+    totalDevengados: Math.round(d.total || 0),
+    deducciones,
+    totalDeducciones: Math.round(x.total || 0),
+    neto: Math.round(resultado.netoPagar || 0),
+  };
+}
+
 export const historialNominaService = {
   listar() {
     try {
@@ -660,6 +698,10 @@ export const historialNominaService = {
       aportesEmpleador: resultado?.aportesEmpleador?.total || 0,
       prestaciones: resultado?.prestaciones?.total || 0,
       costoTotal: resultado?.costoTotalEmpresa || 0,
+      // Datos para el desprendible de pago (panel web y reimpresiones)
+      cedula: emp?.cedula || null,
+      cargo: emp?.cargo || null,
+      detalle: detalleDesprendible(resultado),
       ...extra,
       registradoEn: new Date().toISOString()
     };

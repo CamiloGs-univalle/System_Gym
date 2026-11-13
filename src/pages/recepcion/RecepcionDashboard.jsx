@@ -11,21 +11,31 @@ import ProductosPanel from "../products/productos";
 import IngresoPanel from "../ingreso/IngresoPanel";
 import "../../styles/ingresoCSS/ingreso.css";
 import LogoutConfirmModal from "../../components/common/LogoutConfirmModal";
-import { turnoService, obtenerHorariosConfigurados } from "../../services/turnoService";
+import { turnoService, obtenerHorariosConfigurados, validarHorarioTurno, terminaDiaSiguiente } from "../../services/turnoService";
 import authService from "../../services/authService";
 import ventasService from "../../services/ventasService";
 import { TIPOS_TURNO } from "../admin/turnos/TurnosPanel";
-import { formatCurrencyInput } from "../../utils/formatters";
+import { formatCurrencyInput, fechaLocalISO } from "../../utils/formatters";
+import AppShell from "../../components/layout/AppShell";
+import IngresoClientes from "../acceso/IngresoClientes";
+import { ShoppingCart, ScanLine, Users, Package, PackagePlus, Lock, Clock3, MonitorUp } from "lucide-react";
 
-const NAV = [
-  { id: "general", label: "General" },
-  { id: "clientes", label: "Clientes" },
-  { id: "productos", label: "Productos" },
-  { id: "ingreso", label: "Ingreso" },
-  { id: "cierre", label: "Cierre" }
+const SECCIONES = [
+  { titulo: "Atención", items: [
+    { id: "general", label: "Caja y ventas", icon: ShoppingCart },
+    { id: "acceso", label: "Ingresos", icon: ScanLine },
+    { id: "clientes", label: "Clientes", icon: Users },
+  ] },
+  { titulo: "Inventario", items: [
+    { id: "productos", label: "Productos", icon: Package },
+    { id: "ingreso", label: "Entrada de mercancía", icon: PackagePlus },
+  ] },
+  { titulo: "Turno", items: [
+    { id: "cierre", label: "Cierre de caja", icon: Lock },
+  ] },
 ];
+const TITULOS = Object.fromEntries(SECCIONES.flatMap((s) => s.items.map((i) => [i.id, i.label])));
 
-const horariosConfig = obtenerHorariosConfigurados();
 
 function fechaHoy() {
   const hoy = new Date();
@@ -39,6 +49,8 @@ function fechaHoy() {
 }
 
 export default function RecepcionDashboard() {
+    // Se lee en cada render: si el admin cambia los horarios en Configuración, se aplican de inmediato
+    const horariosConfig = obtenerHorariosConfigurados();
   const [activeView, setActiveView] = useState("general");
   const [confirmLogout, setConfirmLogout] = useState(false);
   const usuario = useAuthStore((state) => state.usuario);
@@ -59,12 +71,23 @@ export default function RecepcionDashboard() {
   const [modalAbrirTurno, setModalAbrirTurno] = useState(false);
   const [formAbrirTurno, setFormAbrirTurno] = useState({
     tipo: "FULL_SHIFT",
-    fecha: new Date().toISOString().split("T")[0],
+    fecha: fechaLocalISO(),
     horaInicio: horariosConfig.FULL_SHIFT.horaInicio,
     horaFin: horariosConfig.FULL_SHIFT.horaFin,
     baseCaja: "",
   });
   const [abriendoTurno, setAbriendoTurno] = useState(false);
+
+  // Al abrir el formulario se toman la fecha de hoy y los horarios actuales de Configuración
+  const abrirModalTurno = () => {
+    const h = obtenerHorariosConfigurados();
+    setFormAbrirTurno((f) => {
+      const tipo = f.tipo || "FULL_SHIFT";
+      const horario = h[tipo] || h.FULL_SHIFT;
+      return { ...f, tipo, fecha: fechaLocalISO(), horaInicio: horario.horaInicio, horaFin: horario.horaFin };
+    });
+    setModalAbrirTurno(true);
+  };
 
   // Efecto para redirigir si no está autenticado
   useEffect(() => {
@@ -164,8 +187,9 @@ export default function RecepcionDashboard() {
       alert("⚠️ No se pudo identificar al empleado. Inicia sesión nuevamente.");
       return;
     }
-    if (formAbrirTurno.horaFin <= formAbrirTurno.horaInicio) {
-      alert("⚠️ La hora de fin debe ser posterior a la hora de inicio.");
+    const errorHorario = validarHorarioTurno(formAbrirTurno.horaInicio, formAbrirTurno.horaFin);
+    if (errorHorario) {
+      alert(`⚠️ ${errorHorario}`);
       return;
     }
     setAbriendoTurno(true);
@@ -218,74 +242,53 @@ export default function RecepcionDashboard() {
 
   return (
     <VentasProvider>
-      <div className="recepcion-fullscreen">
-        <header className="recepcion-topbar">
-          <div className="recepcion-topbar-left">
-            <span className="recepcion-logo">💪</span>
-            <div className="recepcion-topbar-textos">
-              <span className="recepcion-fecha">📅 {fechaHoy()}</span>
-              <span className={`recepcion-turno-chip ${chipClase}`}>
-                <span className="recepcion-turno-texto">{textoTurno}</span>
-                {turnoActivo && (
-                  <span className="recepcion-turno-sync">
-                    {turnoValido ? '✅ Sincronizado' : '⚠️ Local'}
-                  </span>
-                )}
-                {!turnoValido && (
-                  <button
-                    className="recepcion-turno-abrir"
-                    onClick={() => setModalAbrirTurno(true)}
-                    title="Abrir un nuevo turno"
-                  >
-                    Abrir Turno
-                  </button>
-                )}
-              </span>
-              <span className="recepcion-usuario-nombre">
-                {usuario?.fullName || usuario?.nombre || usuario?.username || "Recepcionista"}
-              </span>
-            </div>
-          </div>
-
-          <nav className="recepcion-nav">
-            {NAV.map((item) => (
-              <button
-                key={item.id}
-                className={`nav-pill ${activeView === item.id ? "active" : ""}`}
-                onClick={() => setActiveView(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
-            <button 
-              className="recepcion-logout" 
-              onClick={() => setConfirmLogout(true)} 
-              title="Cerrar sesión"
-            >
-              🚪 Salir
-            </button>
-          </nav>
-        </header>
-
-        <main className="recepcion-dashboard">
-          <div className="recepcion-dashboard-content">
-            {activeView === "general" && (
-              <POSPanel
-                turnoActivo={turnoActivo}
-                turnoValido={turnoValido}
-                turnoIdBackend={turnoIdBackend}
-                mensajeTurno={mensajeTurno}
-                verificandoTurno={verificandoTurno}
-                onAbrirTurno={() => setModalAbrirTurno(true)}
-              />
+      <AppShell
+        secciones={SECCIONES}
+        activo={activeView}
+        onCambiar={setActiveView}
+        titulo={TITULOS[activeView]}
+        onSalir={() => setConfirmLogout(true)}
+        acciones={
+          <>
+            <span className={`sg-chip ${turnoValido ? "ok" : "warn"}`} title={textoTurno}>
+              <span className="dot" />
+              <Clock3 />
+              {turnoValido && turnoActivo
+                ? `Turno ${TIPOS_TURNO[turnoActivo.tipo]?.label || ""} ${turnoActivo.horaInicio || ""}-${turnoActivo.horaFin || ""}`.trim()
+                : "Sin turno abierto"}
+            </span>
+            {!turnoValido && (
+              <button className="sg-btn sg-btn-primary" onClick={abrirModalTurno}>Abrir turno</button>
             )}
-            {activeView === "clientes" && <ClientesPanel />}
-            {activeView === "productos" && <ProductosPanel />}
-            {activeView === "ingreso" && <IngresoPanel />}
-            {activeView === "cierre" && <CierrePanel />}
-          </div>
-        </main>
-
+            <button
+              className="sg-btn sg-btn-ghost"
+              onClick={() => (window.systemGym?.quiosco ? window.systemGym.quiosco.abrir() : window.open(`${window.location.pathname}?modo=quiosco`, "_blank"))}
+              title="Abrir la pantalla de ingreso en el monitor de la entrada"
+            >
+              <MonitorUp /> Pantalla de ingreso
+            </button>
+          </>
+        }
+      >
+        <div className="recepcion-dashboard-content sg-legacy">
+          {activeView === "general" && (
+            <POSPanel
+              turnoActivo={turnoActivo}
+              turnoValido={turnoValido}
+              turnoIdBackend={turnoIdBackend}
+              mensajeTurno={mensajeTurno}
+              verificandoTurno={verificandoTurno}
+              onAbrirTurno={abrirModalTurno}
+            />
+          )}
+          {activeView === "acceso" && <IngresoClientes />}
+          {activeView === "clientes" && <ClientesPanel />}
+          {activeView === "productos" && <ProductosPanel />}
+          {activeView === "ingreso" && <IngresoPanel />}
+          {activeView === "cierre" && <CierrePanel />}
+        </div>
+      </AppShell>
+      <div>
         <LogoutConfirmModal
           open={confirmLogout}
           onConfirm={() => { setConfirmLogout(false); handleLogout(); }}

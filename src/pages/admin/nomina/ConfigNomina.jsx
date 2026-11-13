@@ -5,7 +5,7 @@ import { useState } from "react";
 import { leerConfigNomina, guardarConfigNomina, fechaDePago } from "../../../services/nomina/nominaEngine";
 import { formatDate } from "../../../utils/formatters";
 
-const caja = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 18 };
+const caja = { background: "#fff", border: "1px solid var(--sg-line)", borderRadius: 20, padding: 20, boxShadow: "var(--sg-shadow-sm)" };
 const lbl = { display: "block", fontSize: "0.82rem", fontWeight: 600, color: "#374151", marginBottom: 4, marginTop: 12 };
 const inp = { width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: "0.9rem", boxSizing: "border-box" };
 const ayuda = { fontSize: "0.75rem", color: "#6b7280", marginTop: 4 };

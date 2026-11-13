@@ -10,10 +10,20 @@ import { pagarPeriodo } from "../../../services/nomina/obligacionesNomina";
 import PagosNomina from "./PagosNomina";
 import AhorroNomina from "./AhorroNomina";
 import ConfigNomina from "./ConfigNomina";
-import { COP, formatDate } from "../../../utils/formatters";
+import { COP, formatDate, fechaLocalISO } from "../../../utils/formatters";
 import { empleadosService } from "../../../services/empleadosService";
 import turnoService from "../../../services/turnoService";
 import BoletaPago from "./BoletaPago";
+
+
+/** Horas de un turno contando los minutos; si pasa la medianoche (23:00 a 05:00) suma 24 h */
+function horasDeTurno(ini, fin) {
+  const [h1, m1 = 0] = String(ini).split(':').map(Number);
+  const [h2, m2 = 0] = String(fin).split(':').map(Number);
+  let minutos = (h2 * 60 + m2) - (h1 * 60 + m1);
+  if (minutos <= 0) minutos += 24 * 60;
+  return Math.round((minutos / 60) * 100) / 100;
+}
 
 export default function NominaPanel() {
   const [tab, setTab] = useState("pagos");
@@ -40,31 +50,30 @@ export default function NominaPanel() {
   }, []);
 
   return (
-    <div style={{ padding: "20px" }}>
-      <h2 style={{ margin: "0 0 8px", fontSize: "1.5rem" }}>Nómina</h2>
-      <p style={{ margin: "0 0 20px", color: "#6b7280", fontSize: "0.85rem" }}>
-        Motor de calculo con parametros por fecha. SMMLV: {COP(obtenerParametro("SMMLV"))} | UVT: {COP(obtenerParametro("UVT"))} | Jornada: {obtenerParametro("JORNADA_MAX_SEMANAL")}h sem | Recargo Dom/Fest: {(obtenerParametro("RECARGO_DOMINICAL") * 100).toFixed(0)}%
+    <div>
+      <p style={{ margin: "0 0 18px", color: "var(--sg-muted)", fontSize: 14 }}>
+        Salario mínimo {COP(obtenerParametro("SMMLV"))} · Auxilio de transporte {COP(obtenerParametro("AUXILIO_TRANSPORTE"))} · Jornada {obtenerParametro("JORNADA_MAX_SEMANAL")} h/semana · Recargo dominical {(obtenerParametro("RECARGO_DOMINICAL") * 100).toFixed(0)}%
       </p>
 
       {empleados.some(e => e.activo !== false && !e.fechaIngreso) && (
-        <div style={{ padding: "10px 14px", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, color: "#92400e", fontSize: "0.85rem", marginBottom: 16 }}>
+        <div className="sg-alert sg-alert-warning" style={{ marginBottom: 16 }}>
           Falta la fecha de ingreso de: {empleados.filter(e => e.activo !== false && !e.fechaIngreso).map(e => e.nombre).join(", ")}.
           Regístrela en Empleados: sin ella, la prima, las cesantías y las vacaciones se calculan desde el 1 de enero.
         </div>
       )}
 
-      <div style={{ display: "flex", gap: "4px", marginBottom: "20px", flexWrap: "wrap" }}>
+      <div className="sg-tabs" style={{ marginBottom: 20, flexWrap: "wrap" }}>
         {[
           { id: "pagos", label: "Pagos" },
           { id: "ahorro", label: "Ahorro y obligaciones" },
-          { id: "calculadora", label: "Calculadora Individual" },
-          { id: "turnos", label: "Turnos → Nomina" },
-          { id: "masiva", label: "Liquidacion Mensual" },
-          { id: "parametros", label: "Parametros Vigentes" },
+          { id: "calculadora", label: "Calculadora" },
+          { id: "turnos", label: "Turnos → Nómina" },
+          { id: "masiva", label: "Liquidación mensual" },
+          { id: "parametros", label: "Parámetros" },
           { id: "historial", label: "Historial" },
           { id: "config", label: "Configuración" },
         ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 16px", fontSize: "0.85rem", background: tab === t.id ? "#3b82f6" : "#f3f4f6", color: tab === t.id ? "#fff" : "#374151", border: "none", borderRadius: "6px", cursor: "pointer" }}>
+          <button key={t.id} onClick={() => setTab(t.id)} className={`sg-tab ${tab === t.id ? "active" : ""}`}>
             {t.label}
           </button>
         ))}
@@ -141,7 +150,7 @@ function CalculadoraIndividual({ empleados, onResultado }) {
             <div><strong>Salario:</strong> {COP(emp.salario)}</div>
             <div><strong>Cargo:</strong> {emp.cargo}</div>
             <div><strong>RIESGO ARL:</strong> Nivel {emp.riesgoARL || 3}</div>
-            <div><strong>VHO:</strong> {COP(calcularValorHoraOrdinaria(emp.salario, new Date().toISOString().split("T")[0]))}/hora</div>
+            <div><strong>VHO:</strong> {COP(calcularValorHoraOrdinaria(emp.salario, fechaLocalISO()))}/hora</div>
           </div>
         )}
 
@@ -265,8 +274,8 @@ function CalculadoraIndividual({ empleados, onResultado }) {
 
 function TurnosANomina({ empleados, onResultado }) {
   const [empleadoId, setEmpleadoId] = useState(empleados[0]?.id || "");
-  const [fechaInicio, setFechaInicio] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0]);
-  const [fechaFin, setFechaFin] = useState(new Date().toISOString().split("T")[0]);
+  const [fechaInicio, setFechaInicio] = useState(fechaLocalISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [fechaFin, setFechaFin] = useState(fechaLocalISO());
   const [turnos, setTurnos] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [resultado, setResultado] = useState(null);
@@ -317,9 +326,7 @@ function TurnosANomina({ empleados, onResultado }) {
       const ini = t.horaInicio || '06:00';
       const fin = t.horaFin || '14:00';
       const [hIni] = ini.split(':').map(Number);
-      const [hFin] = fin.split(':').map(Number);
-      let horasTrabajadas = hFin - hIni;
-      if (horasTrabajadas <= 0) horasTrabajadas += 24;
+      const horasTrabajadas = horasDeTurno(ini, fin);
 
       const horasExtras = Math.max(0, horasTrabajadas - JORNADA_MAX_DIA);
       const horasOrdinarias = horasTrabajadas - horasExtras;
@@ -351,11 +358,7 @@ function TurnosANomina({ empleados, onResultado }) {
     return turnos.filter(t => t.cerrado || t.status?.includes('CLOSED')).reduce((sum, t) => {
       const ini = t.horaInicio || '06:00';
       const fin = t.horaFin || '14:00';
-      const [hIni] = ini.split(':').map(Number);
-      const [hFin] = fin.split(':').map(Number);
-      let h = hFin - hIni;
-      if (h <= 0) h += 24;
-      return sum + h;
+      return sum + horasDeTurno(ini, fin);
     }, 0);
   }, [turnos]);
 

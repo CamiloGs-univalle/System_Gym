@@ -6,7 +6,7 @@
  */
 
 import api from './api';
-import { formatHora } from '../utils/formatters';
+import { formatHora, fechaLocalISO } from '../utils/formatters';
 
 // ============================================================
 // HORARIOS CONFIGURADOS POR EL ADMIN (gym_configuracion)
@@ -47,6 +47,17 @@ export const obtenerHorariosConfigurados = () => {
     }
 };
 
+/** true si el turno termina al día siguiente (por ejemplo 23:00 a 05:00) */
+export const terminaDiaSiguiente = (horaInicio, horaFin) =>
+    Boolean(horaInicio && horaFin && horaFin < horaInicio);
+
+/** Valida el horario de un turno. Se permiten turnos de noche que pasan la medianoche. */
+export const validarHorarioTurno = (horaInicio, horaFin) => {
+    if (!horaInicio || !horaFin) return "Indique la hora de inicio y de fin.";
+    if (horaInicio === horaFin) return "La hora de inicio y la de fin no pueden ser iguales.";
+    return null;
+};
+
 // ============================================================
 // MAPEO DE ESTADOS
 // ============================================================
@@ -77,7 +88,7 @@ const mapearTurno = (turno) => {
         empleadoId: turno.receptionistId || turno.employeeId || turno.empleadoId || 0,
         nombreEmpleado: turno.employeeName || turno.nombreEmpleado || '',
         tipo: turno.type || turno.tipo || turno.shiftType || 'FULL_SHIFT',
-        fecha: turno.scheduledDate || turno.date || turno.fecha || turno.openedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+        fecha: turno.scheduledDate || turno.date || turno.fecha || turno.openedAt?.split('T')[0] || fechaLocalISO(),
         horaInicio: formatHora(turno.startTime) || formatHora(turno.horaInicio) || '06:00',
         horaFin: formatHora(turno.endTime) || formatHora(turno.horaFin) || '14:00',
         montoDeclarado: turno.declaredAmount || turno.montoDeclarado || 0,

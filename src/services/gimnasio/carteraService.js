@@ -1,4 +1,5 @@
 import { guardarSincronizado } from '../storageSync';
+import { fechaLocalISO } from "../../utils/formatters";
 // ============================================================
 // SERVICIO DE CARTERA - Control de morosidad y cobranza
 // Tramos: CORRIENTE | 1_30 | 31_60 | 61_90 | 90_MAS
@@ -19,7 +20,7 @@ function guardar(cartera) {
   guardarSincronizado(STORAGE_KEY, cartera);
 }
 
-function hoy() { return new Date().toISOString().split('T')[0]; }
+function hoy() { return fechaLocalISO(); }
 
 function diffDays(f1, f2) {
   return Math.ceil((new Date(f1) - new Date(f2)) / (1000 * 60 * 60 * 24));

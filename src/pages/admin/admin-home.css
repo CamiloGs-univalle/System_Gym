@@ -1,0 +1,80 @@
+/* ============================================================
+   Inicio del administrador
+   ============================================================ */
+.ah { display: grid; gap: 22px; }
+.ah-hero {
+  position: relative; overflow: hidden;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+  padding: 30px 32px; border-radius: 28px; color: #fff;
+  background:
+    radial-gradient(500px 260px at 100% 0%, rgba(34, 195, 238, 0.55), transparent 70%),
+    radial-gradient(420px 260px at 0% 100%, rgba(196, 241, 53, 0.22), transparent 70%),
+    linear-gradient(135deg, #2a1f8f 0%, #5b4be8 45%, #3f6df6 100%);
+  box-shadow: 0 30px 60px -30px rgba(76, 61, 220, 0.75);
+}
+.ah-hero::after {
+  content: ""; position: absolute; right: -60px; top: -60px; width: 260px; height: 260px; border-radius: 50%;
+  border: 40px solid rgba(255, 255, 255, 0.07);
+}
+.ah-eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #d9dcff; }
+.ah-hero h2 { margin: 6px 0 6px; color: #fff; font-size: 40px; font-weight: 800; letter-spacing: -0.03em; }
+.ah-hero h2 small { font-size: 17px; font-weight: 600; color: #d9dcff; letter-spacing: 0; }
+.ah-hero p { margin: 0; color: #e3e5ff; font-size: 15px; }
+.ah-hero-actions { display: flex; gap: 10px; flex-wrap: wrap; position: relative; z-index: 1; }
+.ah-btn-lime { background: var(--sg-lime); color: #0c1328; box-shadow: 0 12px 24px -12px rgba(196, 241, 53, 0.9); }
+.ah-btn-lime:hover { filter: brightness(1.05); }
+.ah-btn-glass { background: rgba(255, 255, 255, 0.14); color: #fff; border-color: rgba(255, 255, 255, 0.25); backdrop-filter: blur(6px); }
+.ah-btn-glass:hover { background: rgba(255, 255, 255, 0.22); }
+
+.ah-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (min-width: 1600px) { .ah-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .ah-stats { grid-template-columns: 1fr 1fr; } }
+.ah-stat { text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.ah-violet .sg-stat-icon { background: #efedff; color: #5b4be8; }
+.ah-amber .sg-stat-icon { background: #fff4dc; color: #c27803; }
+.ah-red .sg-stat-icon { background: #fdeaea; color: #d83b3b; }
+.ah-green .sg-stat-icon { background: #e6f8ee; color: #15803d; }
+.ah-cyan .sg-stat-icon { background: #e2f7fc; color: #0891b2; }
+.ah-pink .sg-stat-icon { background: #fde9f3; color: #db2777; }
+
+.ah-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 18px; align-items: start; }
+.ah-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.ah-card-head .sg-btn svg { width: 15px; height: 15px; }
+.ah-feed { display: grid; gap: 2px; }
+.ah-feed-item { display: flex; align-items: center; gap: 12px; padding: 9px 4px; border-bottom: 1px solid var(--sg-line); }
+.ah-feed-item:last-child { border-bottom: 0; }
+.ah-feed-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.ah-feed-text strong { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ah-feed-text span { font-size: 12.5px; color: var(--sg-muted); }
+
+.ah-quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ah-quick-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  height: 92px; border-radius: 16px; border: 1px solid var(--sg-line); background: var(--sg-surface-2);
+  font-weight: 650; font-size: 13.5px; color: var(--sg-ink-2); cursor: pointer;
+  transition: transform 0.15s var(--sg-ease), border-color 0.15s, background 0.15s;
+}
+.ah-quick-btn svg { width: 24px; height: 24px; color: var(--sg-primary); }
+.ah-quick-btn:hover { transform: translateY(-2px); border-color: var(--sg-primary-100); background: var(--sg-primary-50); }
+.ah-turno {
+  display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 12px 14px; border-radius: 14px;
+  background: var(--sg-warning-50); color: #9a5b00; font-weight: 600; font-size: 14px;
+}
+.ah-turno.ok { background: var(--sg-success-50); color: #13803c; }
+.ah-turno svg { width: 18px; height: 18px; }
+
+/* ============================================================
+   Paneles anteriores dentro del marco nuevo: se armonizan
+   tamaños, bordes y botones sin reescribir cada panel.
+   ============================================================ */
+.sg-legacy { font-size: 15px; }
+.sg-legacy .exec-content,
+.sg-legacy .dashboard-content { padding: 0; }
+.sg-legacy :where(button) { border-radius: 10px; }
+.sg-legacy :where(input:not([type="checkbox"]):not([type="radio"]), select) { min-height: 40px; }
+.sg-legacy :where(table) { font-size: 14px; }
+.sg-legacy :where(th) { color: var(--sg-muted); font-weight: 700; }
+.sg-legacy :where(.card, .dashboard-card, .exec-card) {
+  border-radius: var(--sg-radius-lg) !important;
+  border-color: var(--sg-line) !important;
+}

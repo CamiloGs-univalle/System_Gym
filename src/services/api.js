@@ -1,7 +1,7 @@
 // ============================================================
 // ARCHIVO: src/services/api.js
 // DESCRIPCIÓN: Cliente HTTP central con manejo inteligente de 404
-// VERSIÓN: 2.0 - CORREGIDA (404 no se muestra como error)
+
 // ============================================================
 
 import axios from 'axios';
@@ -16,14 +16,6 @@ const appConfig = (typeof window !== 'undefined' && window.systemGym?.getConfig?
 
 const API_URL = appConfig.apiUrl || import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 const APP_KEY = appConfig.appKey || null;
-
-// ============================================================
-// LOG PARA DEPURACIÓN
-// ============================================================
-
-console.log('🚀 ========================================');
-console.log('🚀 API URL configurada:', API_URL);
-console.log('🚀 ========================================');
 
 // ============================================================
 // CREACIÓN DEL CLIENTE HTTP
@@ -43,15 +35,9 @@ const api = axios.create({
 // ============================================================
 
 api.interceptors.request.use((config) => {
-  // Log para depuración
-  console.log('📤 Request:', config.method.toUpperCase(), config.url);
-  
   const token = localStorage.getItem('gymcore_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
-    console.log('🔑 Token adjuntado');
-  } else {
-    console.log('⚠️ No hay token disponible');
   }
   return config;
 });
@@ -61,10 +47,7 @@ api.interceptors.request.use((config) => {
 // ============================================================
 
 api.interceptors.response.use(
-  (response) => {
-    console.log('📥 Response:', response.status, response.config.url);
-    return response;
-  },
+  (response) => response,
   (error) => {
     // ==========================================================
     // ✅ MANEJO ESPECIAL PARA 404 - NO ES UN ERROR, ES INFORMACIÓN
@@ -74,14 +57,7 @@ api.interceptors.response.use(
     // ==========================================================
     
     if (error.response?.status === 404) {
-      // ✅ Log informativo, NO de error
-      console.log(`ℹ️ 404 - Recurso no encontrado: ${error.config?.url}`);
-      if (error.response?.data?.message) {
-        console.log(`   Mensaje: ${error.response.data.message}`);
-      }
-      
-      // ✅ Retornamos el error para que el servicio lo maneje
-      // El servicio decide si es error real o no
+      // El servicio decide si es un error real o no
       return Promise.reject(error);
     }
     
@@ -89,17 +65,15 @@ api.interceptors.response.use(
     // ❌ ERRORES REALES (500, 403, 401, 422, etc.)
     // ==========================================================
     
-    console.error(`❌ Error ${error.response?.status || 'sin status'} en ${error.config?.url || 'URL desconocida'}:`);
-    console.error('   Data:', error.response?.data);
-    console.error('   Message:', error.message);
+    // No se registra el cuerpo de la respuesta: puede contener datos de clientes
+    console.error(`Error ${error.response?.status || 'sin respuesta'} en ${error.config?.url || 'URL desconocida'}: ${error.message}`);
     
     // ==========================================================
     // MANEJO DE AUTENTICACIÓN (401)
     // ==========================================================
     
     if (error.response?.status === 401) {
-      console.warn('⚠️ Sesión expirada, volviendo a login...');
-      // ✅ En Electron la app carga por file://, así que NO podemos navegar
+      // En Electron la app carga por file://, así que NO podemos navegar
       // a "/login" con location.href (no existe esa ruta física).
       // Limpiamos la sesión y recargamos: AppContent detecta que no hay
       // usuario y muestra el Login automáticamente.
@@ -111,14 +85,6 @@ api.interceptors.response.use(
       }
     }
     
-    // ==========================================================
-    // MANEJO DE ERRORES DE VALIDACIÓN (422)
-    // ==========================================================
-    
-    if (error.response?.status === 422) {
-      console.warn('⚠️ Error de validación:', error.response.data);
-    }
-
     // Cambio de contraseña obligatorio o licencia vencida: se avisa a la interfaz
     const code = error.response?.data?.errorCode || error.response?.data?.code;
     if (typeof window !== 'undefined') {
@@ -130,18 +96,6 @@ api.interceptors.response.use(
           detail: error.response?.data?.message,
         }));
       }
-    }
-    
-    // ==========================================================
-    // MANEJO DE ERRORES DE CONEXIÓN
-    // ==========================================================
-    
-    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-      console.error('⏱️ Tiempo de espera agotado');
-    }
-    
-    if (error.code === 'ERR_NETWORK') {
-      console.error('🌐 Error de red. Verifica tu conexión.');
     }
     
     // ==========================================================

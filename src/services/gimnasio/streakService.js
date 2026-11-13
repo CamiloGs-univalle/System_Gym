@@ -1,4 +1,5 @@
 import { guardarSincronizado } from '../storageSync';
+import { fechaLocalISO } from "../../utils/formatters";
 // ============================================================
 // SERVICIO DE RACHA / CONSTANCIA DEL CLIENTE
 // Calcula dias consecutivos de asistencia y asigna nivel de llama
@@ -18,7 +19,7 @@ function guardar(streaks) {
   guardarSincronizado(STORAGE_KEY, streaks);
 }
 
-function hoy() { return new Date().toISOString().split('T')[0]; }
+function hoy() { return fechaLocalISO(); }
 
 function diffDays(f1, f2) {
   return Math.round((new Date(f1) - new Date(f2)) / (86400000));

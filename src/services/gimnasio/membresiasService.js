@@ -1,4 +1,5 @@
 import { guardarSincronizado } from '../storageSync';
+import { fechaLocalISO } from "../../utils/formatters";
 // ============================================================
 // SERVICIO DE MEMBRESÍAS - Ciclo de vida completo del cliente
 // Estado: ACTIVA | POR_VENCER | VENCIDA | MORA | BLOQUEADA | PAUSADA | CONGELADA | CANCELADA | SUSPENDIDA
@@ -18,7 +19,7 @@ function guardar(membresias) {
   guardarSincronizado(STORAGE_KEY, membresias);
 }
 
-function hoy() { return new Date().toISOString().split('T')[0]; }
+function hoy() { return fechaLocalISO(); }
 
 function diffDays(f1, f2) {
   return Math.ceil((new Date(f1) - new Date(f2)) / (1000 * 60 * 60 * 24));
@@ -127,8 +128,9 @@ export const membresiasService = {
       planNombre: datosRenovacion.planNombre || m.planNombre,
       planPrecio: datosRenovacion.planPrecio || m.planPrecio,
       precioAcordado: datosRenovacion.precioAcordado || m.precioAcordado,
-      fechaInicio: hoy(),
-      fechaVencimiento: nuevoVenc.toISOString().split('T')[0],
+      // Si el backend ya calculó las fechas (cobro en caja), se usan esas
+      fechaInicio: datosRenovacion.fechaInicio || hoy(),
+      fechaVencimiento: datosRenovacion.fechaVencimiento || nuevoVenc.toISOString().split('T')[0],
       estado: 'ACTIVA',
       bloqueoAcceso: false,
       renovaciones: [...(m.renovaciones || []), {

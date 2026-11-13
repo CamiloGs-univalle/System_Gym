@@ -8,7 +8,8 @@
 //   busca un Java 21 instalado en el equipo.
 // - Nunca cierra procesos ajenos.
 // ============================================================
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, screen, session } = require("electron");
+const biometria = require("./biometria");
 const { spawn, execSync } = require("child_process");
 const crypto = require("crypto");
 const http = require("http");
@@ -23,6 +24,7 @@ let backendProcess = null;
 let backendPort = null;
 let appKey = null;
 let mainWindow = null;
+let kioskWindow = null;
 
 // ============================================================
 // LOG EN ARCHIVO (diagnóstico)
@@ -183,6 +185,113 @@ async function startBackend() {
     return ok ? { ok: true } : { ok: false, reason: "El servidor de la aplicación no respondió a tiempo." };
 }
 
+// Lector de huella (proveedor simulado o real, ver electron/biometria)
+biometria.registrarIpc(ipcMain);
+
+// ============================================================
+// PANTALLA DE INGRESO (quiosco): se abre en el segundo monitor si existe
+// ============================================================
+function rutaApp(query) {
+    return isDev
+        ? { url: `http://localhost:5173/?${query}` }
+        : { file: path.join(__dirname, "../dist/index.html"), query: Object.fromEntries(new URLSearchParams(query)) };
+}
+
+function abrirQuiosco() {
+    if (kioskWindow && !kioskWindow.isDestroyed()) {
+        kioskWindow.show();
+        kioskWindow.focus();
+        return { ok: true, yaAbierta: true };
+    }
+    const pantallas = screen.getAllDisplays();
+    const principal = screen.getPrimaryDisplay();
+    const externa = pantallas.find((d) => d.id !== principal.id);
+    const destino = externa || principal;
+    kioskWindow = new BrowserWindow({
+        x: destino.bounds.x,
+        y: destino.bounds.y,
+        width: destino.bounds.width,
+        height: destino.bounds.height,
+        fullscreen: Boolean(externa),
+        autoHideMenuBar: true,
+        title: "System Gym - Ingreso",
+        backgroundColor: "#0b1220",
+        webPreferences: {
+            preload: path.join(__dirname, "preload.js"),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+        },
+    });
+    kioskWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    kioskWindow.on("closed", () => { kioskWindow = null; });
+    const ruta = rutaApp("modo=quiosco");
+    if (ruta.url) kioskWindow.loadURL(ruta.url);
+    else kioskWindow.loadFile(ruta.file, { query: ruta.query });
+    return { ok: true, monitorExterno: Boolean(externa) };
+}
+
+ipcMain.handle("quiosco:abrir", () => abrirQuiosco());
+ipcMain.handle("quiosco:cerrar", () => {
+    if (kioskWindow && !kioskWindow.isDestroyed()) kioskWindow.close();
+    return true;
+});
+ipcMain.handle("quiosco:pantalla-completa", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) win.setFullScreen(!win.isFullScreen());
+    return true;
+});
+
+// ============================================================
+// AVISOS Y CONFIRMACIONES
+// ------------------------------------------------------------
+// Los alert()/confirm() nativos de Chromium en Electron (Windows) dejan la
+// ventana sin foco de teclado: después de uno, los campos ya no reciben lo que
+// se escribe hasta reiniciar o cambiar de ventana. La interfaz los reemplaza
+// por estos diálogos, que al cerrarse devuelven el foco a la ventana.
+// ============================================================
+function devolverFoco(win) {
+    if (!win || win.isDestroyed()) return;
+    win.blur();
+    win.focus();
+    win.webContents.focus();
+}
+
+function textoDialogo(mensaje) {
+    const texto = String(mensaje ?? "");
+    return texto.length > 2000 ? texto.slice(0, 2000) + "…" : texto;
+}
+
+ipcMain.on("dialogo:alert", (event, mensaje) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const texto = textoDialogo(mensaje);
+    const esError = /error|no se pudo|❌|inválid|invalid/i.test(texto);
+    dialog.showMessageBoxSync(win, {
+        type: esError ? "warning" : "info",
+        title: "System Gym",
+        message: texto,
+        buttons: ["Aceptar"],
+        noLink: true,
+    });
+    devolverFoco(win);
+    event.returnValue = true;
+});
+
+ipcMain.on("dialogo:confirm", (event, mensaje) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const respuesta = dialog.showMessageBoxSync(win, {
+        type: "question",
+        title: "System Gym",
+        message: textoDialogo(mensaje),
+        buttons: ["Aceptar", "Cancelar"],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+    });
+    devolverFoco(win);
+    event.returnValue = respuesta === 0;
+});
+
 // La interfaz pide la configuración de forma síncrona al cargar (ver preload.js)
 ipcMain.on("systemgym:get-config", (event) => {
     event.returnValue = {
@@ -211,6 +320,11 @@ function createWindow() {
     });
     const win = mainWindow;
     logToFile(`[app] Ventana creada | mode=${isDev ? "development" : "production"}`);
+
+    // Al volver a la ventana (Alt+Tab, clic) el teclado vuelve a los campos
+    win.on("focus", () => {
+        if (!win.isDestroyed()) win.webContents.focus();
+    });
 
     // Solo se guardan en disco los errores del renderer. Los mensajes
     // informativos pueden contener datos sensibles y no se persisten.
@@ -255,6 +369,13 @@ function createWindow() {
 
 app.whenReady().then(async () => {
     logToFile("[app] Iniciando...");
+
+    // Permisos del navegador: solo la cámara (para la foto de los clientes)
+    session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
+        const soloVideo = permission === "media" && (details.mediaTypes || []).every((t) => t === "video");
+        callback(soloVideo);
+    });
+    session.defaultSession.setPermissionCheckHandler((wc, permission) => permission === "media");
     const result = await startBackend();
 
     if (!result.ok) {
@@ -297,5 +418,6 @@ app.on("window-all-closed", () => {
 
 app.on("will-quit", () => {
     logToFile("[app] Cerrando...");
+    biometria.cerrar();
     stopBackend();
 });

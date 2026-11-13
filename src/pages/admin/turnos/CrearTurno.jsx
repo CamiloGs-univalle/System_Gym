@@ -3,14 +3,14 @@
 
 import { useState } from "react";
 import Button from "../../../components/ui/Button";
-import { turnoService, obtenerHorariosConfigurados } from "../../../services/turnoService";
+import { turnoService, obtenerHorariosConfigurados, validarHorarioTurno, terminaDiaSiguiente } from "../../../services/turnoService";
 import { TIPOS_TURNO } from "./TurnosPanel";
-import { formatCurrencyInput, cleanCurrencyInput } from "../../../utils/formatters";
+import { formatCurrencyInput, cleanCurrencyInput, fechaLocalISO } from "../../../utils/formatters";
 
-const hoy = new Date().toISOString().split("T")[0];
-const horariosConfig = obtenerHorariosConfigurados();
 
-export default function CrearTurno({ empleados, onClose, onSuccess, fechaDefault = hoy }) {
+export default function CrearTurno({ empleados, onClose, onSuccess, fechaDefault = fechaLocalISO() }) {
+    // Se lee en cada render: si el admin cambia los horarios en Configuración, se aplican de inmediato
+    const horariosConfig = obtenerHorariosConfigurados();
     const [form, setForm] = useState({
         empleadoId: "",
         tipo: "FULL_SHIFT", // ✅ clave válida (antes: "FULL")
@@ -37,8 +37,9 @@ export default function CrearTurno({ empleados, onClose, onSuccess, fechaDefault
             return;
         }
 
-        if (form.horaFin <= form.horaInicio) {
-            setError("La hora de fin debe ser posterior a la hora de inicio");
+        const errorHorario = validarHorarioTurno(form.horaInicio, form.horaFin);
+        if (errorHorario) {
+            setError(errorHorario);
             return;
         }
 
@@ -139,7 +140,7 @@ export default function CrearTurno({ empleados, onClose, onSuccess, fechaDefault
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', color: '#1d4ed8' }}>
                             <span style={{ fontSize: '16px' }}>🕐</span>
                             <span>
-                                <strong>Horario asignado:</strong> {form.fecha ? new Date(form.fecha + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : '—'} · {form.horaInicio} a {form.horaFin}
+                                <strong>Horario asignado:</strong> {form.fecha ? new Date(form.fecha + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : '—'} · {form.horaInicio} a {form.horaFin}{terminaDiaSiguiente(form.horaInicio, form.horaFin) ? ' del día siguiente' : ''}
                             </span>
                         </div>
 
