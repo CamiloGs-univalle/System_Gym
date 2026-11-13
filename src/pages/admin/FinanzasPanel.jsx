@@ -15,6 +15,7 @@ import ingresoService from "../../services/ingresoService";
 import finanzasService from "../../services/finanzasService";
 import { historialNominaService } from "../../services/nomina/nominaEngine";
 import useAuthStore from "../../store/authStore";
+import VentasAnulables from "../../components/admin/VentasAnulables";
 
 
 const diasHastaFecha = (fechaStr) => {
@@ -232,6 +233,7 @@ export default function FinanzasPanel() {
                     { id: "resumen", label: "📊 Resumen" },
                     { id: "nomina", label: "👷 Nómina" },
                     { id: "movimientos", label: "📋 Movimientos" },
+                    { id: "ventas", label: "🧾 Ventas y anulaciones" },
                 ].map(s => (
                     <button
                         key={s.id}
@@ -242,6 +244,8 @@ export default function FinanzasPanel() {
                     </button>
                 ))}
             </div>
+
+            {seccion === "ventas" && <VentasAnulables />}
 
             {/* RESUMEN */}
             {seccion === "resumen" && (

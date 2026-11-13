@@ -26,6 +26,9 @@ import { streakService } from '../../services/gimnasio/streakService';
 import FotoCliente from '../../components/clientes/FotoCliente';
 import './pos-caja.css';
 
+// Llave única por cobro (Idempotency-Key)
+const nuevaLlaveCobro = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '');
+
 const COP = (v) => '$' + Math.round(Number(v) || 0).toLocaleString('es-CO');
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const fechaCorta = (iso) => {
@@ -95,6 +98,9 @@ export default function POSPanel({ turnoActivo, turnoValido, turnoIdBackend, ver
   const [metodoPago, setMetodoPago] = useState('CASH');
   const [montoRecibido, setMontoRecibido] = useState('');
   const [procesando, setProcesando] = useState(false);
+  const llaveCobro = useRef(null);
+  // Si cambia la cuenta o el método de pago es otro cobro: llave nueva
+  useEffect(() => { llaveCobro.current = null; }, [carrito, metodoPago]);
   const [aviso, setAviso] = useState(null);
   const [ultimaVenta, setUltimaVenta] = useState(null);
 
@@ -281,35 +287,29 @@ export default function POSPanel({ turnoActivo, turnoValido, turnoIdBackend, ver
     const efectivo = metodoPago === 'CASH' ? (recibido || total) : 0;
 
     setProcesando(true);
-    const cobrado = [];
+    // La misma llave se reutiliza si se reintenta este carrito: el servidor no cobra dos veces
+    if (!llaveCobro.current) llaveCobro.current = nuevaLlaveCobro();
     try {
+      const r = await ventasService.cobrar({
+        llave: llaveCobro.current,
+        shiftId,
+        metodoPago,
+        efectivoRecibido: efectivo,
+        productos: productosVenta.map((i) => ({ productId: i.id, quantity: i.cantidad })),
+        planes: planesVenta.map((pl) => ({ clientId: pl.clienteId, membershipType: tipoMembresiaDePlan(pl.plan), amount: pl.precio })),
+      });
+
       if (productosVenta.length > 0) {
-        const lineas = productosVenta.map((i) => ({
-          productId: i.id, quantity: i.cantidad, unitPrice: i.precio, subtotal: i.precio * i.cantidad,
-        }));
-        const totalProd = productosVenta.reduce((s, i) => s + i.precio * i.cantidad, 0);
-        await ventasService.registrarVenta(lineas, metodoPago, shiftId, 'PRODUCT_SALE', cliente?.id || null, totalProd);
-        cobrado.push(...productosVenta);
         agregarVenta({
           descripcion: productosVenta.map((i) => `${i.cantidad} x ${i.nombre}`).join(', '),
-          total: totalProd, metodoPago, tipo: 'producto', cliente: cliente?.nombre || null,
+          total: productosVenta.reduce((s, i) => s + i.precio * i.cantidad, 0),
+          metodoPago, tipo: 'producto', cliente: cliente?.nombre || null,
         });
       }
-
       for (const pl of planesVenta) {
-        let actualizado;
-        try {
-          actualizado = await clientesService.renovarMembresia(pl.clienteId, {
-            tipo: tipoMembresiaDePlan(pl.plan), monto: pl.precio, metodoPago,
-            efectivoRecibido: pl.precio, shiftId, processedByUserId: ventasService.getUserId(),
-          });
-        } catch (e) {
-          throw new Error(`No se pudo cobrar el plan de ${pl.clienteNombre}: ${e.mensajeUsuario || e.message}`);
-        }
-        cobrado.push(pl);
-
-        // Registro local (pagos, planes) con las fechas que calculó el sistema
-        const mem = actualizado?.currentMembership || {};
+        // Registro local (planes, pagos) con las fechas que calculó el servidor
+        const actualizado = (r?.clients || []).find((c) => c.id === pl.clienteId) || {};
+        const mem = actualizado.currentMembership || {};
         const fechaInicio = mem.startDate || fechaLocalISO();
         const fechaVencimiento = mem.expirationDate || '';
         let membresiaLocalId = null;
@@ -327,8 +327,11 @@ export default function POSPanel({ turnoActivo, turnoValido, turnoIdBackend, ver
         agregarVenta({ descripcion: `Plan ${pl.nombre}`, total: pl.precio, metodoPago, tipo: 'mensualidad', cliente: pl.clienteNombre });
       }
 
+      llaveCobro.current = null;
+      const totalCobrado = r?.total ?? total;
+      const cambioServidor = r?.change ?? (metodoPago === 'CASH' ? Math.max(0, efectivo - total) : null);
       setUltimaVenta({
-        total, metodoPago, cambio: metodoPago === 'CASH' ? Math.max(0, efectivo - total) : null,
+        total: totalCobrado, metodoPago, cambio: metodoPago === 'CASH' ? cambioServidor : null,
         resumen: carrito.map((i) => `${i.cantidad > 1 ? `${i.cantidad} x ` : ''}${i.nombre}`).join(', '),
         cliente: cliente?.nombre || null,
       });
@@ -336,18 +339,17 @@ export default function POSPanel({ turnoActivo, turnoValido, turnoIdBackend, ver
       setMontoRecibido('');
       setCliente(null);
       setBusquedaCliente('');
-      mostrarAviso('exito', metodoPago === 'CASH' && efectivo > total
-        ? `Venta registrada · Entregue ${COP(efectivo - total)} de cambio`
+      mostrarAviso('exito', metodoPago === 'CASH' && cambioServidor > 0
+        ? `Venta registrada · Entregue ${COP(cambioServidor)} de cambio`
         : 'Venta registrada');
       inputProductoRef.current?.focus();
     } catch (e) {
-      // Lo que alcanzó a cobrarse sale de la cuenta: un reintento no lo cobra de nuevo
-      if (cobrado.length) {
-        setCarrito((prev) => prev.filter((i) => !cobrado.includes(i)));
-        mostrarAviso('error', `${e.message}. Lo demás de la cuenta sí quedó cobrado.`);
-      } else {
-        mostrarAviso('error', e.mensajeUsuario || e.message || 'No se pudo registrar la venta');
-      }
+      // Nada quedó cobrado (todo es una sola transacción). Si fue un corte de conexión,
+      // al reintentar se usa la misma llave y el servidor no cobra dos veces.
+      const sinRespuesta = !e?.status && !e?.response;
+      mostrarAviso('error', sinRespuesta
+        ? 'No hubo respuesta del servidor. Vuelva a presionar Cobrar: no se cobrará dos veces.'
+        : (e.mensajeUsuario || e.message || 'No se pudo registrar la venta. No se cobró nada.'));
     } finally {
       setProcesando(false);
       cargarProductos();
