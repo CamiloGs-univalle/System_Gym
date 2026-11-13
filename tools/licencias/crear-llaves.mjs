@@ -23,5 +23,5 @@ const { publicKey, privateKey } = generateKeyPairSync("rsa", {
 writeFileSync(join(dir, "private.pem"), privateKey, { mode: 0o600 });
 writeFileSync(join(dir, "public.pem"), publicKey);
 console.log("Llaves creadas en", dir);
-console.log("\nCopie esta llave pública en systemgym.license.public-key (application.properties):\n");
-console.log(publicKey.replace(/-----[^-]+-----/g, "").replace(/\s/g, ""));
+console.log("\nCopie public.pem a electron/license-public.pem (la llave pública sí va con la app).");
+console.log("Electron la entrega al backend al arrancar; sin ese archivo el licenciamiento queda desactivado.");

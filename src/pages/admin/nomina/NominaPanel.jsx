@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import {
   obtenerParametro, esFestivo, esDominical,
   calcularValorHoraOrdinaria, calcularFactorHoraExtra,
-  calcularAportesEmpleador, calcularDeducciones, calcularPrestaciones,
+  calcularAportesEmpleador, calcularDeducciones, calcularPrestaciones, clasificarHorasTurno,
   liquidarNominaIndividual, liquidarNominaMensual, historialNominaService,
   festivosColombia, leerConfigNomina, proximoPeriodo
 } from "../../../services/nomina/nominaEngine";
@@ -325,24 +325,21 @@ function TurnosANomina({ empleados, onResultado }) {
     turnos.filter(t => t.cerrado || t.status?.includes('CLOSED')).forEach(t => {
       const ini = t.horaInicio || '06:00';
       const fin = t.horaFin || '14:00';
-      const [hIni] = ini.split(':').map(Number);
-      const horasTrabajadas = horasDeTurno(ini, fin);
-
-      const horasExtras = Math.max(0, horasTrabajadas - JORNADA_MAX_DIA);
-      const horasOrdinarias = horasTrabajadas - horasExtras;
       const fecha = t.fecha || t.scheduledDate;
-      const dominical = fecha && esDominical(fecha);
-      const festivo = fecha && esFestivo(fecha);
+      // Minuto a minuto: la hora nocturna empieza a las 7:00 p. m. (Ley 2466 de 2025)
+      const h = clasificarHorasTurno(fecha, ini, fin, JORNADA_MAX_DIA);
+      const dominical = fecha && (esDominical(fecha) || esFestivo(fecha));
 
-      if (dominical || festivo) {
-        horasDominicales += horasOrdinarias;
-        if (horasExtras > 0) horasDominicales += horasExtras;
-      } else if (hIni >= 21 || hIni < 6) {
-        horasOrdNocturnas += horasOrdinarias;
-        recargoNocturnoHoras += horasOrdinarias;
-        if (horasExtras > 0) heNocturnas += horasExtras;
+      if (dominical) {
+        // Todas las horas del domingo/festivo llevan recargo dominical;
+        // las nocturnas además suman el recargo nocturno.
+        horasDominicales += h.ordDiurnas + h.ordNocturnas + h.extraDiurnas + h.extraNocturnas;
+        recargoNocturnoHoras += h.ordNocturnas + h.extraNocturnas;
       } else {
-        if (horasExtras > 0) heDiurnas += horasExtras;
+        horasOrdNocturnas += h.ordNocturnas;
+        recargoNocturnoHoras += h.ordNocturnas;
+        heDiurnas += h.extraDiurnas;
+        heNocturnas += h.extraNocturnas;
       }
     });
 

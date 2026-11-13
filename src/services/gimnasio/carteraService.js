@@ -1,5 +1,5 @@
 import { guardarSincronizado } from '../storageSync';
-import { fechaLocalISO } from "../../utils/formatters";
+import { fechaLocalISO, fechaHoraLocalISO } from "../../utils/formatters";
 // ============================================================
 // SERVICIO DE CARTERA - Control de morosidad y cobranza
 // Tramos: CORRIENTE | 1_30 | 31_60 | 61_90 | 90_MAS
@@ -107,7 +107,7 @@ export const carteraService = {
     
     const nuevaGestion = {
       id: (cartera[idx].gestiones?.length || 0) + 1,
-      fecha: new Date().toISOString(),
+      fecha: fechaHoraLocalISO(),
       tipo: gestion.tipo || 'LLAMADA',
       resultado: gestion.resultado || '',
       compromiso: gestion.compromiso || '',

@@ -1,5 +1,5 @@
 import { guardarSincronizado } from '../storageSync';
-import { fechaLocalISO } from "../../utils/formatters";
+import { fechaLocalISO, fechaHoraLocalISO } from "../../utils/formatters";
 // ============================================================
 // SERVICIO DE MEMBRESÍAS - Ciclo de vida completo del cliente
 // Estado: ACTIVA | POR_VENCER | VENCIDA | MORA | BLOQUEADA | PAUSADA | CONGELADA | CANCELADA | SUSPENDIDA
@@ -110,7 +110,7 @@ export const membresiasService = {
     const diasAnteriores = diffDays(m.fechaVencimiento, hoy());
     const diasRestantes = Math.max(0, diasAnteriores);
     
-    const nuevoVenc = new Date(hoy());
+    const nuevoVenc = new Date(`${hoy()}T12:00:00`);
     if (m.modeloCobro === '30_DIAS') {
       nuevoVenc.setDate(nuevoVenc.getDate() + 30);
     } else if (m.modeloCobro === 'ANIVERSARIO') {
@@ -130,11 +130,11 @@ export const membresiasService = {
       precioAcordado: datosRenovacion.precioAcordado || m.precioAcordado,
       // Si el backend ya calculó las fechas (cobro en caja), se usan esas
       fechaInicio: datosRenovacion.fechaInicio || hoy(),
-      fechaVencimiento: datosRenovacion.fechaVencimiento || nuevoVenc.toISOString().split('T')[0],
+      fechaVencimiento: datosRenovacion.fechaVencimiento || fechaLocalISO(nuevoVenc),
       estado: 'ACTIVA',
       bloqueoAcceso: false,
       renovaciones: [...(m.renovaciones || []), {
-        fecha: new Date().toISOString(),
+        fecha: fechaHoraLocalISO(),
         tipo: datosRenovacion.tipo || 'MANUAL',
         planAnterior: m.planId,
         planNuevo: datosRenovacion.planId || m.planId,
@@ -177,9 +177,9 @@ export const membresiasService = {
     
     if (m.extensionVencimiento && m.fechaFinCongelacion) {
       const diasExt = diffDays(m.fechaFinCongelacion, m.fechaInicioCongelacion || hoy());
-      const nuevoVenc = new Date(m.fechaVencimiento);
+      const nuevoVenc = new Date(`${m.fechaVencimiento}T12:00:00`);
       nuevoVenc.setDate(nuevoVenc.getDate() + Math.max(0, diasExt));
-      membresias[idx].fechaVencimiento = nuevoVenc.toISOString().split('T')[0];
+      membresias[idx].fechaVencimiento = fechaLocalISO(nuevoVenc);
     }
     membresias[idx].estado = calcularEstado(membresias[idx]);
     membresias[idx].actualizadoEn = new Date().toISOString();
@@ -205,7 +205,7 @@ export const membresiasService = {
     if (idx === -1) throw new Error("Membresía no encontrada");
     membresias[idx].estado = 'CANCELADA';
     membresias[idx].cancelacion = {
-      fecha: new Date().toISOString(),
+      fecha: fechaHoraLocalISO(),
       motivo: datos.motivo || 'Solicitud del cliente',
       saldo: datos.saldo || 0,
       reembolso: datos.reembolso || 0,
@@ -230,7 +230,7 @@ export const membresiasService = {
     const diasNuevoPeriodo = Math.floor(saldoAFavor / precioDiarioNuevo);
     const diferenciaPagar = Math.max(0, datos.nuevoPlanPrecio - saldoAFavor);
     
-    const nuevaFechaVenc = new Date(hoy());
+    const nuevaFechaVenc = new Date(`${hoy()}T12:00:00`);
     nuevaFechaVenc.setDate(nuevaFechaVenc.getDate() + diasNuevoPeriodo);
     
     membresias[idx] = {
@@ -239,9 +239,9 @@ export const membresiasService = {
       planNombre: datos.nuevoPlanNombre,
       planPrecio: datos.nuevoPlanPrecio,
       precioAcordado: datos.nuevoPlanPrecio,
-      fechaVencimiento: nuevaFechaVenc.toISOString().split('T')[0],
+      fechaVencimiento: fechaLocalISO(nuevaFechaVenc),
       historialCambios: [...(m.historialCambios || []), {
-        fecha: new Date().toISOString(),
+        fecha: fechaHoraLocalISO(),
         planAnterior: m.planId,
         planAnteriorNombre: m.planNombre,
         planAnteriorPrecio: m.planPrecio,

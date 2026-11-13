@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld("systemGym", {
         confirm: (mensaje) => ipcRenderer.sendSync("dialogo:confirm", String(mensaje ?? "")) === true,
     },
 
+    sistema: {
+        elegirCarpeta: (titulo) => ipcRenderer.invoke("sistema:elegir-carpeta", titulo),
+        reiniciar: () => ipcRenderer.invoke("sistema:reiniciar"),
+    },
+
     quiosco: {
         abrir: () => ipcRenderer.invoke("quiosco:abrir"),
         cerrar: () => ipcRenderer.invoke("quiosco:cerrar"),

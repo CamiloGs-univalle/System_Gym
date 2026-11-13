@@ -16,6 +16,7 @@ const http = require("http");
 const net = require("net");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 const isDev = process.env.NODE_ENV === "development";
 const DEV_BACKEND_PORT = 8080;
@@ -168,6 +169,8 @@ async function startBackend() {
         };
     }
 
+    aplicarRestauracionPendiente();
+
     backendPort = await getFreePort();
     appKey = crypto.randomBytes(32).toString("hex");
     logToFile(`[backend] Java: ${javaExe} | JAR: ${jar} | puerto ${backendPort}`);
@@ -177,6 +180,10 @@ async function startBackend() {
         QUARKUS_HTTP_PORT: String(backendPort),
         SYSTEMGYM_APP_SECRET: appKey,
     };
+    const equipo = idEquipo();
+    if (equipo) env.SYSTEMGYM_MACHINE_ID = equipo;
+    const llaveLicencia = leerLlavePublicaLicencia();
+    if (llaveLicencia) env.SYSTEMGYM_LICENSE_PUBLIC_KEY = llaveLicencia;
     backendProcess = spawn(javaExe, ["-jar", jar], { env, stdio: "ignore", windowsHide: true });
     backendProcess.on("error", (err) => logToFile(`[backend] Error: ${err.message}`));
     backendProcess.on("exit", (code) => logToFile(`[backend] Terminó con código ${code}`));
@@ -184,6 +191,94 @@ async function startBackend() {
     const ok = await waitForBackend(backendPort);
     return ok ? { ok: true } : { ok: false, reason: "El servidor de la aplicación no respondió a tiempo." };
 }
+
+// ============================================================
+// LICENCIA: la llave PÚBLICA viaja con la app (electron/license-public.pem).
+// Sin ese archivo el licenciamiento queda desactivado (modo desarrollo).
+// La llave privada nunca va en el repositorio (ver tools/licencias).
+// ============================================================
+function leerLlavePublicaLicencia() {
+    if (process.env.SYSTEMGYM_LICENSE_PUBLIC_KEY) return process.env.SYSTEMGYM_LICENSE_PUBLIC_KEY;
+    try {
+        const pem = fs.readFileSync(path.join(__dirname, "license-public.pem"), "utf8").trim();
+        if (pem.includes("BEGIN PUBLIC KEY")) return pem;
+    } catch (e) { /* sin llave: licencia desactivada */ }
+    logToFile("[licencia] No hay electron/license-public.pem: licenciamiento desactivado");
+    return null;
+}
+
+// Código del equipo para licencias atadas a un PC: SHA-256 del MachineGuid de Windows
+// (no cambia al reinstalar System Gym). Se muestran 16 caracteres.
+function idEquipo() {
+    try {
+        let base = "";
+        if (process.platform === "win32") {
+            const out = execSync('reg query "HKLM\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid',
+                { encoding: "utf8", windowsHide: true });
+            base = (/MachineGuid\s+REG_SZ\s+(\S+)/i.exec(out) || [])[1] || "";
+        }
+        if (!base) base = `${os.hostname()}|${os.userInfo().username}`;
+        return crypto.createHash("sha256").update(base).digest("hex").slice(0, 16).toUpperCase();
+    } catch (e) {
+        logToFile(`[licencia] No se pudo calcular el código del equipo: ${e.message}`);
+        return null;
+    }
+}
+
+// ============================================================
+// RESTAURACIÓN DE RESPALDOS
+// El backend no puede reemplazar su propia base de datos mientras la usa:
+// deja ~/.gymcore/restore-pending.json y aquí se aplica antes de arrancarlo.
+// La base actual se conserva como gymcore.db.antes-de-restaurar-<fecha>.
+// ============================================================
+function aplicarRestauracionPendiente() {
+    const dirDatos = path.join(os.homedir(), ".gymcore");
+    const pendiente = path.join(dirDatos, "restore-pending.json");
+    if (!fs.existsSync(pendiente)) return;
+    try {
+        const { backup, db, name } = JSON.parse(fs.readFileSync(pendiente, "utf8"));
+        const dentro = (p) => path.resolve(p).startsWith(path.resolve(dirDatos) + path.sep);
+        if (!backup || !db || !dentro(backup) || !dentro(db) || !fs.existsSync(backup)) {
+            throw new Error("Instrucción de restauración no válida");
+        }
+        const sello = new Date().toISOString().replace(/[:.]/g, "-");
+        if (fs.existsSync(db)) fs.renameSync(db, `${db}.antes-de-restaurar-${sello}`);
+        for (const extra of ["-journal", "-wal", "-shm"]) {
+            if (fs.existsSync(db + extra)) fs.renameSync(db + extra, `${db}${extra}.antes-de-restaurar-${sello}`);
+        }
+        fs.copyFileSync(backup, db);
+        logToFile(`[respaldo] Restaurado desde ${name || backup}`);
+        dialog.showMessageBoxSync({
+            type: "info", title: "System Gym",
+            message: "Se restauró la información del respaldo seleccionado.",
+            detail: `Respaldo: ${name || path.basename(backup)}\nLa información anterior quedó guardada en la carpeta .gymcore por si necesita volver atrás.`,
+            buttons: ["Aceptar"],
+        });
+    } catch (e) {
+        logToFile(`[respaldo] No se pudo restaurar: ${e.message}`);
+        dialog.showMessageBoxSync({
+            type: "error", title: "System Gym",
+            message: "No se pudo restaurar el respaldo.", detail: e.message, buttons: ["Aceptar"],
+        });
+    } finally {
+        try { fs.unlinkSync(pendiente); } catch (e) { /* noop */ }
+    }
+}
+
+// Elegir carpeta (copia externa de respaldos) y reiniciar la app (tras restaurar)
+ipcMain.handle("sistema:elegir-carpeta", async (event, titulo) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const r = await dialog.showOpenDialog(win, {
+        title: String(titulo || "Elegir carpeta"),
+        properties: ["openDirectory", "createDirectory"],
+    });
+    return r.canceled ? null : r.filePaths[0] || null;
+});
+ipcMain.handle("sistema:reiniciar", () => {
+    app.relaunch();
+    app.quit();
+    return true;
+});
 
 // Lector de huella (proveedor simulado o real, ver electron/biometria)
 biometria.registrarIpc(ipcMain);

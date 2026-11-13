@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { pagosService } from "../../../services/gimnasio/pagosService";
-import { COP, formatDate } from "../../../utils/formatters";
+import { COP, formatDate, fechaHoraLocalISO } from "../../../utils/formatters";
 
 const METODOS = [
   { value: "EFECTIVO", label: "Efectivo", icon: "$" },
@@ -143,7 +143,7 @@ function ModalPago({ onGuardar, onCancelar }) {
         <textarea style={{ ...inp, height: 60 }} value={form.notas} onChange={e => setForm({ ...form, notas: e.target.value })} />
         <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "16px" }}>
           <button onClick={onCancelar} style={{ padding: "8px 16px", background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: "6px", cursor: "pointer" }}>Cancelar</button>
-          <button onClick={() => onGuardar({ ...form, valorTotal: parseFloat(form.valorTotal) || 0, fecha: new Date().toISOString() })} style={{ padding: "8px 16px", background: "#10b981", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}>Guardar</button>
+          <button onClick={() => onGuardar({ ...form, valorTotal: parseFloat(form.valorTotal) || 0, fecha: fechaHoraLocalISO() })} style={{ padding: "8px 16px", background: "#10b981", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}>Guardar</button>
         </div>
       </div>
     </div>

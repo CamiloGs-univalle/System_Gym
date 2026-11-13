@@ -157,7 +157,7 @@ export default function TurnosPanel() {
             }
 
             if (!usuarioId) {
-                const storedUser = localStorage.getItem('gymcore-user');
+                const storedUser = localStorage.getItem('gymcore_user');
                 if (storedUser) {
                     try {
                         const parsed = JSON.parse(storedUser);

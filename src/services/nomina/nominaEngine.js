@@ -30,6 +30,10 @@ const PARAMETROS = [
   { codigo: 'RECARGO_HE_DIURNA', descripcion: 'Recargo hora extra diurna', vigenciaDesde: '2025-01-01', valor: 0.25 },
   { codigo: 'RECARGO_HE_NOCTURNA', descripcion: 'Recargo hora extra nocturna', vigenciaDesde: '2025-01-01', valor: 0.75 },
   { codigo: 'RECARGO_NOCTURNO', descripcion: 'Recargo trabajo nocturno', vigenciaDesde: '2025-01-01', valor: 0.35 },
+  // Ley 2466 de 2025: el trabajo nocturno empieza a las 7:00 p. m. desde el 25 de diciembre de 2025 (antes 9:00 p. m.)
+  { codigo: 'HORA_INICIO_NOCTURNA', descripcion: 'Hora en que empieza el trabajo nocturno', vigenciaDesde: '2025-12-25', valor: 19 },
+  { codigo: 'HORA_INICIO_NOCTURNA', descripcion: 'Hora en que empieza el trabajo nocturno', vigenciaDesde: '2025-01-01', vigenciaHasta: '2025-12-24', valor: 21 },
+  { codigo: 'HORA_FIN_NOCTURNA', descripcion: 'Hora en que termina el trabajo nocturno', vigenciaDesde: '2025-01-01', valor: 6 },
   { codigo: 'RECARGO_DOMINICAL', descripcion: 'Recargo dominical/festivo', vigenciaDesde: '2026-07-01', vigenciaHasta: '2027-06-30', valor: 0.90 },
   { codigo: 'RECARGO_DOMINICAL', descripcion: 'Recargo dominical/festivo', vigenciaDesde: '2025-07-01', vigenciaHasta: '2026-06-30', valor: 0.80 },
   { codigo: 'RECARGO_DOMINICAL', descripcion: 'Recargo dominical/festivo', vigenciaDesde: '2027-07-01', valor: 1.00 },
@@ -157,15 +161,52 @@ export function calcularValorHoraOrdinaria(salarioMensual, fecha, jornadaSemanal
 // ============================================================
 // CÁLCULO DE RECARGOS
 // ============================================================
-export function calcularRecargoHora(fecha, horaInicio) {
-  const horaNum = typeof horaInicio === 'string' ? parseInt(horaInicio.split(':')[0], 10) : horaInicio;
-  const esNocturna = horaNum >= 21 || horaNum < 6;
-  const dominicalesFestivos = esDescansoObligatorio(fecha);
+/** true si la hora (0-23, puede tener decimales) es nocturna en esa fecha. */
+export function esHoraNocturna(hora, fecha) {
+  const inicio = obtenerParametro('HORA_INICIO_NOCTURNA', fecha) ?? 19;
+  const fin = obtenerParametro('HORA_FIN_NOCTURNA', fecha) ?? 6;
+  const h = ((hora % 24) + 24) % 24;
+  return h >= inicio || h < fin;
+}
 
-  if (dominicalesFestivos && esNocturna) return { tipo: 'DOMINICAL_NOCTURNA', recargo: 0.90, factor: 1.90 };
-  if (dominicalesFestivos && !esNocturna) return { tipo: 'DOMINICAL_DIURNA', recargo: 0.90, factor: 1.90 };
-  if (esNocturna) return { tipo: 'NOCTURNA', recargo: 0.35, factor: 1.35 };
-  return { tipo: 'DIURNA', recargo: 0, factor: 1.0 };
+/**
+ * Recargo de una hora ordinaria según el día y la hora.
+ * El recargo dominical/festivo y el nocturno se suman (hora dominical nocturna).
+ * Validar con el contador del gimnasio.
+ */
+export function calcularRecargoHora(fecha, horaInicio) {
+  const horaNum = typeof horaInicio === 'string'
+    ? (() => { const [h, m = 0] = horaInicio.split(':').map(Number); return h + m / 60; })()
+    : horaInicio;
+  const esNocturna = esHoraNocturna(horaNum, fecha);
+  const dominicalesFestivos = esDescansoObligatorio(fecha);
+  const dom = dominicalesFestivos ? (obtenerParametro('RECARGO_DOMINICAL', fecha) || 0) : 0;
+  const noc = esNocturna ? (obtenerParametro('RECARGO_NOCTURNO', fecha) || 0) : 0;
+  const recargo = Math.round((dom + noc) * 10000) / 10000;
+  const tipo = dominicalesFestivos ? (esNocturna ? 'DOMINICAL_NOCTURNA' : 'DOMINICAL_DIURNA') : (esNocturna ? 'NOCTURNA' : 'DIURNA');
+  return { tipo, recargo, factor: 1 + recargo };
+}
+
+/**
+ * Reparte las horas de un turno en ordinarias/extra y diurnas/nocturnas, minuto a minuto.
+ * Las horas extra son las últimas del turno (después de la jornada máxima diaria).
+ * Un turno que pasa la medianoche (22:00 a 06:00) se cuenta completo.
+ */
+export function clasificarHorasTurno(fecha, horaInicio, horaFin, jornadaMaxDia = 8) {
+  const aMin = (t) => { const [h, m = 0] = String(t).split(':').map(Number); return h * 60 + m; };
+  const ini = aMin(horaInicio);
+  let fin = aMin(horaFin);
+  if (fin <= ini) fin += 24 * 60;
+  const limiteOrd = ini + Math.round(jornadaMaxDia * 60);
+  const r = { ordDiurnas: 0, ordNocturnas: 0, extraDiurnas: 0, extraNocturnas: 0 };
+  for (let m = ini; m < fin; m++) {
+    const nocturna = esHoraNocturna(m / 60, fecha);
+    const extra = m >= limiteOrd;
+    const clave = extra ? (nocturna ? 'extraNocturnas' : 'extraDiurnas') : (nocturna ? 'ordNocturnas' : 'ordDiurnas');
+    r[clave] += 1;
+  }
+  for (const k of Object.keys(r)) r[k] = Math.round((r[k] / 60) * 100) / 100;
+  return r;
 }
 
 export function calcularFactorHoraExtra(esNocturna, fecha) {
@@ -248,9 +289,9 @@ export function calcularAportesEmpleador(baseSaludPension, baseARL, riesgoARL = 
 // ============================================================
 // CÁLCULO DE DEDUCCIONES TRABAJADOR
 // ============================================================
-export function calcularDeducciones(baseSaludPension, retencionFuente = 0, deduccionesVoluntarias = []) {
-  const salud = baseSaludPension * (obtenerParametro('SALUD_TRABAJADOR') || 0.04);
-  const pension = baseSaludPension * (obtenerParametro('PENSION_TRABAJADOR') || 0.04);
+export function calcularDeducciones(baseSaludPension, retencionFuente = 0, deduccionesVoluntarias = [], fecha = null) {
+  const salud = baseSaludPension * (obtenerParametro('SALUD_TRABAJADOR', fecha) || 0.04);
+  const pension = baseSaludPension * (obtenerParametro('PENSION_TRABAJADOR', fecha) || 0.04);
 
   const voluntarias = deduccionesVoluntarias.reduce((sum, d) => sum + (d.valor || 0), 0);
 
@@ -355,7 +396,7 @@ export function liquidarNominaIndividual(empleado, novedades = {}, fecha = null,
 
   const deducciones = esContratista
     ? { salud: 0, pension: 0, retencionFuente: Math.round(novedades.retencionFuente || 0), voluntarias: 0, total: Math.round(novedades.retencionFuente || 0) }
-    : calcularDeducciones(baseSaludPension, novedades.retencionFuente || 0, novedades.deduccionesVoluntarias || []);
+    : calcularDeducciones(baseSaludPension, novedades.retencionFuente || 0, novedades.deduccionesVoluntarias || [], fechaLiq);
 
   // 3. Neto a pagar
   const netoPagar = totalDevengado - deducciones.total;

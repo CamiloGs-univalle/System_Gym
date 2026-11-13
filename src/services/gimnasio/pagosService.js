@@ -1,4 +1,5 @@
 import { guardarSincronizado } from '../storageSync';
+import { fechaLocalISO, fechaHoraLocalISO } from "../../utils/formatters";
 // ============================================================
 // SERVICIO DE PAGOS - Registro completo de transacciones
 // Métodos: EFECTIVO | DEBITO | CREDITO | TRANSFERENCIA | PSE | QR | CONVENIO | MIXTO
@@ -55,7 +56,7 @@ export const pagosService = {
       clienteNombre: datos.clienteNombre || '',
       membresiaId: datos.membresiaId || null,
       facturaId: datos.facturaId || null,
-      fecha: datos.fecha || new Date().toISOString(),
+      fecha: datos.fecha || fechaHoraLocalISO(),
       hora: datos.hora || new Date().toTimeString().slice(0, 5),
       caja: datos.caja || 'CAJA_PRINCIPAL',
       sedeId: datos.sedeId || 1,
@@ -171,7 +172,7 @@ export const pagosService = {
 
   estadisticas() {
     const pagos = cargar().filter(p => p.estado !== 'ANULADO');
-    const mesActual = new Date().toISOString().slice(0, 7);
+    const mesActual = fechaLocalISO().slice(0, 7);
     const pagosMes = pagos.filter(p => p.fecha?.startsWith(mesActual));
     
     return {

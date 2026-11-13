@@ -4,7 +4,7 @@
 // periodo) y se registra como egreso "Nómina" en Finanzas.
 // ============================================================
 import { useMemo, useState } from "react";
-import { COP, formatDate } from "../../../utils/formatters";
+import { COP, formatDate, fechaLocalISO } from "../../../utils/formatters";
 import { proximosPagosNomina, pagarPeriodo } from "../../../services/nomina/obligacionesNomina";
 import { historialNominaService, hoyISO } from "../../../services/nomina/nominaEngine";
 
@@ -152,7 +152,7 @@ export default function PagosNomina({ empleados }) {
 function sumar(fecha, dias) {
   const d = new Date(`${fecha}T12:00:00`);
   d.setDate(d.getDate() + dias);
-  return d.toISOString().slice(0, 10);
+  return fechaLocalISO(d);
 }
 
 function Dato({ titulo, valor, nota, color }) {
