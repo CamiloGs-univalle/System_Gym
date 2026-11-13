@@ -20,9 +20,7 @@ import { clientesService, tipoMembresiaDePlan } from '../../services/clientesSer
 import { fechaLocalISO } from '../../utils/formatters';
 import { diasAvisoVencimiento, stockMinimoGlobal } from '../../utils/configuracion';
 import { planesService } from '../../services/gimnasio/planesService';
-import { membresiasService } from '../../services/gimnasio/membresiasService';
-import { pagosService } from '../../services/gimnasio/pagosService';
-import { streakService } from '../../services/gimnasio/streakService';
+import accesoService from '../../services/accesoService';
 import FotoCliente from '../../components/clientes/FotoCliente';
 import './pos-caja.css';
 
@@ -67,8 +65,12 @@ function estadoPlan(cliente) {
 }
 
 function Racha({ clienteId }) {
-  const dias = useMemo(() => {
-    try { return streakService.obtenerStreak(clienteId)?.diasConsecutivos || 0; } catch { return 0; }
+  const [dias, setDias] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    setDias(0);
+    if (clienteId) accesoService.estadisticas(clienteId).then((s) => { if (vivo) setDias(s?.currentStreak || 0); });
+    return () => { vivo = false; };
   }, [clienteId]);
   if (!dias) return null;
   return (
@@ -307,23 +309,7 @@ export default function POSPanel({ turnoActivo, turnoValido, turnoIdBackend, ver
         });
       }
       for (const pl of planesVenta) {
-        // Registro local (planes, pagos) con las fechas que calculó el servidor
-        const actualizado = (r?.clients || []).find((c) => c.id === pl.clienteId) || {};
-        const mem = actualizado.currentMembership || {};
-        const fechaInicio = mem.startDate || fechaLocalISO();
-        const fechaVencimiento = mem.expirationDate || '';
-        let membresiaLocalId = null;
-        try {
-          const datosPlan = { planId: pl.id, planNombre: pl.nombre, planPrecio: pl.precio, precioAcordado: pl.precio };
-          const actual = membresiasService.obtenerActivaPorCliente(pl.clienteId);
-          if (actual) {
-            membresiasService.renovar(actual.id, { ...datosPlan, montoPagado: pl.precio, metodoPago, responsable: 'Recepcion', fechaInicio, fechaVencimiento });
-            membresiaLocalId = actual.id;
-          } else {
-            membresiaLocalId = membresiasService.crear({ ...datosPlan, clienteId: pl.clienteId, fechaInicio, fechaVencimiento, modeloCobro: '30_DIAS', diasGracia: 5, sedeId: 1 }).id;
-          }
-        } catch (e) { console.warn('Registro local de membresía:', e.message); }
-        pagosService.registrarPagoMembresia(membresiaLocalId, pl.clienteId, pl.clienteNombre, pl.precio, metodoPago, { planNombre: pl.nombre });
+        // El plan, sus fechas y el pago quedan en el servidor (clientes y ventas)
         agregarVenta({ descripcion: `Plan ${pl.nombre}`, total: pl.precio, metodoPago, tipo: 'mensualidad', cliente: pl.clienteNombre });
       }
 

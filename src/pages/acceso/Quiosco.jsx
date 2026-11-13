@@ -13,7 +13,7 @@ import {
 import FotoCliente from "../../components/clientes/FotoCliente";
 import useIngreso from "./useIngreso";
 import accesoService from "../../services/accesoService";
-import { obtenerNivelLlama } from "../../services/gimnasio/streakService";
+import { obtenerNivelLlama } from "../../utils/racha";
 import { datosEmpresa } from "../../utils/empresa";
 import { leerConfiguracion } from "../../utils/configuracion";
 import "./acceso.css";

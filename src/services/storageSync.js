@@ -13,18 +13,18 @@ import api from './api';
 
 // Debe coincidir con StorageResource.ALLOWED_KEYS del backend.
 export const SYNC_KEYS = [
-  'gymcore_accesos', 'gymcore_cartera', 'gymcore_membresias', 'gymcore_pagos',
-  'gymcore_planes', 'gymcore_promociones', 'gymcore_streaks',
+  // Pagos, membresías, cartera, accesos y rachas viven en sus tablas del servidor.
+  'gymcore_planes', 'gymcore_promociones',
   'gymcore_nomina_historial', 'gymcore_nomina_pagos',
   'gymcore_nomina_config', 'gymcore_nomina_obligaciones',
-  'gym_configuracion', 'gym_membresias',
+  'gym_configuracion',
 ];
 
 // Solo el administrador puede modificarlas (StorageResource.ADMIN_ONLY_KEYS).
 const ADMIN_ONLY_KEYS = [
   'gymcore_nomina_historial', 'gymcore_nomina_pagos', 'gymcore_nomina_config',
   'gymcore_nomina_obligaciones', 'gym_configuracion',
-  'gym_membresias', 'gymcore_planes', 'gymcore_promociones',
+  'gymcore_planes', 'gymcore_promociones',
 ];
 
 const ROLES_ADMIN = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRADOR'];
